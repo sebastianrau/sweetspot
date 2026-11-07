@@ -6,6 +6,7 @@ import (
 
 	"github.com/sebastianrau/sweetspot/internal/domain"
 	"github.com/sebastianrau/sweetspot/internal/focusrite/protocol"
+	"github.com/sebastianrau/sweetspot/internal/focusrite2"
 )
 
 // Output maps a speaker to a stereo output pair by Focusrite element IDs.
@@ -20,6 +21,8 @@ type Output struct {
 
 // Config selects the interface and the elements the controller drives.
 type Config struct {
+	Backend  string
+	Control2 focusrite2.Config
 	// SerialNumber of the interface to control. Empty adopts the first one
 	// that appears and maps its outputs automatically.
 	SerialNumber string
@@ -31,6 +34,7 @@ type Config struct {
 
 // DeviceInfo describes an attached interface for the settings UI.
 type DeviceInfo struct {
+	Control2     *focusrite2.DeviceInfo
 	Model        string
 	SerialNumber string
 	MuteID       int

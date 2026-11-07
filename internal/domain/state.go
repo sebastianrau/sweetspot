@@ -175,6 +175,10 @@ var Silence = Levels{LeftDB: SilenceDB, RightDB: SilenceDB}
 // Device describes the connection to Focusrite Control and the configured
 // interface.
 type Device struct {
+	// Control2 reports which mapped capabilities are available.
+	Control2                             bool
+	HasVolume, HasMute, HasDim, HasMeter bool
+	SpeakerOutputs                       [NumSpeakers]bool
 	// ServerConnected is true while connected to Focusrite Control.
 	ServerConnected bool
 	// Present is true while the configured interface is attached.
