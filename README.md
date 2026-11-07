@@ -35,6 +35,20 @@ Tested with the Scarlett 4i4 (3rd Gen) and Scarlett 18i20 (3rd Gen).
 - Optional: a Mackie Control compatible surface, a Stream Deck with a MIDI
   plugin, or an OSC app.
 
+### Focusrite Control 2
+
+Select **Focusrite Control 2** under **Configuration → Focusrite** and click
+**Pair with Focusrite Control 2…**. Scan Sweetspot’s link QR with your phone,
+accept the local self-signed HTTPS certificate, then use the mobile page’s
+camera scanner to read the pairing QR displayed by FC2. Photo upload remains
+available as a fallback.
+After pairing, select one direct output or mix per speaker; gain, mute and meters
+are assigned together.
+The FC2 transport discovers controls by their AES70 classes and roles, without
+a device-model allowlist. Available functions depend on what FC2 exposes;
+manual hardware checks passed with a Scarlett 4i4 (3rd Gen).
+See [FC2 pairing, output mapping and protocol details](docs/focusrite-control-2.md).
+
 ### Install
 
 Download the archive for your system from the
@@ -245,6 +259,7 @@ CI builds and tests on macOS, Windows and Linux. Pushing a tag (for example
 | ------- | ---- |
 | `internal/domain` | The state and every rule as pure functions: exclusive speakers, dim, volume limits, scenes, meter source. |
 | `internal/controller` | Applies commands one at a time on a single goroutine and publishes each new state as a snapshot. A slow subscriber only gets the latest snapshot and never blocks the others. |
+| `internal/focusrite2` | FC2 discovery, mobile QR bridge, authenticated AES70 transport and dynamic control mapping. |
 | `internal/focusrite` | Client and adapter for Focusrite Control; `protocol` is its XML protocol, tested with real messages from the 18i20 and 4i4. |
 | `internal/mcu` | MIDI connection and adapter for Mackie Control surfaces. |
 | `internal/osc` | OSC codec, server and adapter; `touchosc` generates the TouchOSC layout (`cmd/touchosc-layout`). |

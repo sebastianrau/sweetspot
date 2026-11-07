@@ -103,7 +103,9 @@ func (a *Adapter) handle(e Event) {
 		a.devices[d.ID] = d
 		a.publishCatalog()
 		if a.cfg.SerialNumber == "" {
+			backend, control2 := a.cfg.Backend, a.cfg.Control2
 			a.cfg = AutoConfig(Describe(d))
+			a.cfg.Backend, a.cfg.Control2 = backend, control2
 			log.Info("no interface configured, adopting", "model", d.Model, "serial", d.SerialNumber)
 			if a.OnAdopt != nil {
 				a.OnAdopt(a.cfg)

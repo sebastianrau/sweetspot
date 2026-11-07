@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"strings"
@@ -30,11 +31,13 @@ type settingsWindow struct {
 	live    domain.State
 	devices []focusrite.DeviceInfo
 
-	draft     config.Config
-	monitor   domain.State
-	focusrite *fyne.Container
-	oscPort   string // port entry text, checked on save
-	built     bool   // the window content exists
+	draft      config.Config
+	monitor    domain.State
+	focusrite  *fyne.Container
+	oscPort    string // port entry text, checked on save
+	pairCancel context.CancelFunc
+	pairWindow fyne.Window
+	built      bool // the window content exists
 }
 
 func newSettingsWindow(app fyne.App, opts Options) *settingsWindow {
@@ -213,6 +216,29 @@ func (s *settingsWindow) midiSection() fyne.CanvasObject {
 }
 
 func (s *settingsWindow) buildFocusrite() {
+	control1 := container.NewTabItem("Focusrite Control 1", container.NewVBox())
+	control2 := container.NewTabItem("Focusrite Control 2", container.NewVBox())
+	selected := control1
+	if s.draft.Focusrite.Backend == "control2" {
+		control2.Content = s.control2Section()
+		selected = control2
+	} else {
+		control1.Content = s.control1Section()
+	}
+	tabs := container.NewAppTabs(control1, control2)
+	tabs.Select(selected)
+	tabs.OnSelected = func(item *container.TabItem) {
+		s.draft.Focusrite.Backend = ""
+		if item == control2 {
+			s.draft.Focusrite.Backend = "control2"
+		}
+		s.buildFocusrite()
+	}
+	s.focusrite.Objects = []fyne.CanvasObject{tabs}
+	s.focusrite.Refresh()
+}
+
+func (s *settingsWindow) control1Section() fyne.CanvasObject {
 	fc := s.draft.FocusriteConfig()
 	label := func(d focusrite.DeviceInfo) string { return fmt.Sprintf("%s (%s)", d.Model, d.SerialNumber) }
 	var current *focusrite.DeviceInfo
@@ -260,8 +286,7 @@ func (s *settingsWindow) buildFocusrite() {
 		form.Add(widget.NewLabel(speakerLabel(id)))
 		form.Add(s.outputSelect(current, fc, id))
 	}
-	s.focusrite.Objects = []fyne.CanvasObject{form}
-	s.focusrite.Refresh()
+	return form
 }
 
 func (s *settingsWindow) outputSelect(dev *focusrite.DeviceInfo, fc focusrite.Config, id domain.SpeakerID) fyne.CanvasObject {
@@ -338,6 +363,21 @@ func (s *settingsWindow) save() {
 		return
 	}
 	s.draft.OSC.Port = port
+	if s.draft.Focusrite.Backend == "control2" {
+		for _, d := range s.devices {
+			if d.Control2 != nil && len(d.Control2.Controls) > 0 {
+				if e := d.Control2.ValidateMappings(s.draft.Focusrite.Control2); e != nil {
+					dialog.ShowError(e, s.win)
+					return
+				}
+			}
+		}
+		for i, o := range s.draft.Focusrite.Control2.Outputs {
+			if o.Name != "" {
+				s.opts.Submit(domain.RenameSpeaker{ID: domain.SpeakerID(i), Name: o.Name})
+			}
+		}
+	}
 
 	for _, id := range domain.Speakers {
 		want, have := s.monitor.Speakers[id], s.live.Speakers[id]
@@ -352,7 +392,13 @@ func (s *settingsWindow) save() {
 		s.opts.Submit(domain.SetMeterFloorDB{DB: s.monitor.Master.MeterFloorDB})
 	}
 	s.opts.Store.Update(func(c *config.Config) {
+		identity := c.Focusrite.Control2
 		c.Focusrite = s.draft.Focusrite
+		c.Focusrite.Control2.PrivateKey = identity.PrivateKey
+		c.Focusrite.Control2.ServerPublicKey = identity.ServerPublicKey
+		c.Focusrite.Control2.Host = identity.Host
+		c.Focusrite.Control2.OnboardingPort = identity.OnboardingPort
+		c.Focusrite.Control2.SecurePort = identity.SecurePort
 		c.MIDI = s.draft.MIDI
 		c.OSC = s.draft.OSC
 	})

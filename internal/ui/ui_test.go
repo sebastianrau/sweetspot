@@ -451,3 +451,21 @@ func TestActiveSceneHoldDoesNothing(t *testing.T) {
 		t.Errorf("commands = %#v, bar %t", *cmds, b.bar.Visible())
 	}
 }
+
+func TestFC2OnlyEnablesMappedCapabilities(t *testing.T) {
+	a, _ := newTestApp(t)
+	device := connected()
+	device.Control2 = true
+	a.render(domain.Snapshot{State: domain.DefaultState(), Device: device})
+	if !a.fader.Disabled() || a.mute.enabled || a.dim.enabled || a.speakers[domain.SpeakerA].enabled {
+		t.Fatal("unmapped FC2 controls must be disabled")
+	}
+	device.HasVolume = true
+	device.HasMute = true
+	device.HasDim = true
+	device.SpeakerOutputs[domain.SpeakerB] = true
+	a.render(domain.Snapshot{State: domain.DefaultState(), Device: device})
+	if a.fader.Disabled() || !a.mute.enabled || !a.dim.enabled || !a.speakers[domain.SpeakerB].enabled || a.speakers[domain.SpeakerA].enabled {
+		t.Fatal("FC2 capability availability not reflected")
+	}
+}

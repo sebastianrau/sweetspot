@@ -10,6 +10,7 @@ import (
 	"github.com/sebastianrau/sweetspot/internal/config"
 	"github.com/sebastianrau/sweetspot/internal/controller"
 	"github.com/sebastianrau/sweetspot/internal/focusrite"
+	"github.com/sebastianrau/sweetspot/internal/focusrite2"
 	"github.com/sebastianrau/sweetspot/internal/mcu"
 	"github.com/sebastianrau/sweetspot/internal/osc"
 )
@@ -86,6 +87,14 @@ type services struct {
 func newServices(ctx context.Context, store *config.Store, ctrl *controller.Controller, devices catalog) *services {
 	s := &services{ctx: ctx, store: store}
 	s.startFocusrite = func(ctx context.Context, cfg focusrite.Config) *service {
+		if cfg.Backend == "control2" {
+			devices.publish(nil)
+			return startService(ctx, func(ctx context.Context) {
+				focusrite2.Run(ctx, cfg.Control2, ctrl.Snapshot, ctrl.Submit, func(info focusrite2.DeviceInfo) {
+					devices.publish([]focusrite.DeviceInfo{{Model: info.Model, SerialNumber: info.Serial, Control2: &info}})
+				})
+			})
+		}
 		client := focusrite.NewClient()
 		sub := ctrl.Subscribe()
 		a := focusrite.NewAdapter(cfg, client.Events(), client, ctrl.Submit, sub.C())

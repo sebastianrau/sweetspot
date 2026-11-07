@@ -10,6 +10,7 @@ import (
 
 	"github.com/sebastianrau/sweetspot/internal/domain"
 	"github.com/sebastianrau/sweetspot/internal/focusrite"
+	"github.com/sebastianrau/sweetspot/internal/focusrite2"
 	"github.com/sebastianrau/sweetspot/internal/mcu"
 	"github.com/sebastianrau/sweetspot/internal/osc"
 )
@@ -59,10 +60,12 @@ type Speaker struct {
 
 // Focusrite selects the interface and its element IDs.
 type Focusrite struct {
-	SerialNumber string   `yaml:"serial_number"`
-	MuteID       int      `yaml:"mute_id"`
-	DimID        int      `yaml:"dim_id"`
-	Outputs      []Output `yaml:"outputs"` // A, B, C, D, Sub
+	Backend      string            `yaml:"backend,omitempty"`
+	Control2     focusrite2.Config `yaml:"control2,omitempty"`
+	SerialNumber string            `yaml:"serial_number"`
+	MuteID       int               `yaml:"mute_id"`
+	DimID        int               `yaml:"dim_id"`
+	Outputs      []Output          `yaml:"outputs"` // A, B, C, D, Sub
 }
 
 type Output struct {
@@ -138,7 +141,7 @@ func (c *Config) SetState(s domain.State) {
 }
 
 func (c Config) FocusriteConfig() focusrite.Config {
-	f := focusrite.Config{SerialNumber: c.Focusrite.SerialNumber, MuteID: c.Focusrite.MuteID, DimID: c.Focusrite.DimID}
+	f := focusrite.Config{Backend: c.Focusrite.Backend, Control2: c.Focusrite.Control2, SerialNumber: c.Focusrite.SerialNumber, MuteID: c.Focusrite.MuteID, DimID: c.Focusrite.DimID}
 	for i, o := range c.Focusrite.Outputs {
 		if i < domain.NumSpeakers {
 			f.Outputs[i] = focusrite.Output(o)
@@ -148,7 +151,7 @@ func (c Config) FocusriteConfig() focusrite.Config {
 }
 
 func (c *Config) SetFocusrite(f focusrite.Config) {
-	c.Focusrite = Focusrite{SerialNumber: f.SerialNumber, MuteID: f.MuteID, DimID: f.DimID}
+	c.Focusrite = Focusrite{Backend: f.Backend, Control2: f.Control2, SerialNumber: f.SerialNumber, MuteID: f.MuteID, DimID: f.DimID}
 	for _, o := range f.Outputs {
 		c.Focusrite.Outputs = append(c.Focusrite.Outputs, Output(o))
 	}

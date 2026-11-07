@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Sweetspot · FC2 pairing</title>
+<style>
+/* Keep these colors aligned with internal/ui/colors.go. */
+:root{--background:#121417;--panel:#1b1e22;--raised:#262a30;--line:#1f2327;--text:#e8eaed;--text-idle:#c4c8cd;--text-dim:#8b9198;--text-disabled:#5c636b;--green:#3ddc84;--green-bg:#1d3326;color-scheme:dark;font:16px/1.5 system-ui,-apple-system,sans-serif;background:var(--background);color:var(--text)}
+*{box-sizing:border-box}body{margin:0;padding:20px 16px;padding: max(20px,env(safe-area-inset-top)) max(16px,env(safe-area-inset-right)) max(24px,env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left))}
+main{width:100%;max-width:30rem;margin:auto;min-width:0}header{margin-bottom:20px}.brand{margin:0 0 8px;color:var(--green);font-size:14px;font-weight:700;letter-spacing:.06em}h1{font-size:clamp(24px,6vw,30px);line-height:1.2;margin:0 0 12px}p{margin:12px 0;overflow-wrap:anywhere}.intro{color:var(--text-idle)}
+button{display:block;width:100%;min-height:48px;padding:12px 16px;margin:12px 0;background:var(--green-bg);color:var(--text);border:1px solid var(--green);border-radius:12px;font:inherit;font-weight:650;cursor:pointer;white-space:normal}#stop{background:var(--raised);color:var(--text);border-color:var(--text-dim)}button:disabled{background:var(--raised);color:var(--text-disabled);border-color:var(--text-disabled);cursor:default}
+label{display:block;margin:12px 0 8px;font-weight:600}input,textarea{font:inherit;max-width:100%;min-width:0}input[type=file]{display:block;width:100%;font-size:14px;overflow:hidden}input::file-selector-button{min-height:44px;max-width:100%;padding:10px 12px;margin:0 8px 8px 0;border:1px solid var(--text-dim);border-radius:8px;background:var(--raised);color:var(--text);font:inherit}
+textarea{display:block;width:100%;padding:12px;border:1px solid var(--text-dim);border-radius:8px;background:var(--background);color:var(--text);font:16px/1.5 monospace;resize:vertical}video{display:block;width:100%;max-height:48svh;object-fit:contain;background:var(--background);border-radius:12px}#photo-preview{display:block;max-width:100%;max-height:220px;margin:12px auto;object-fit:contain;border-radius:8px}
+#status{padding:12px 14px;background:var(--raised);border-left:3px solid var(--green);border-radius:8px}#camera-help,#photo-state{font-size:14px;color:var(--text-idle)}details{margin:12px 0;border:1px solid var(--line);border-radius:12px;padding:0 14px}summary{min-height:48px;padding:12px 0;cursor:pointer;font-weight:600}details form{padding-bottom:4px}details p{font-size:14px;color:var(--text-idle)}:focus-visible{outline:3px solid var(--text);outline-offset:3px}[hidden]{display:none!important}
+#scanner{scroll-margin-top:8px}#scanner video{height:min(52vh,420px);height:min(52svh,420px);max-height:none}body.scanning header{margin-bottom:8px}body.scanning header .brand,body.scanning header .intro{display:none}body.scanning h1{font-size:20px;margin-bottom:8px}body.scanning #status{font-size:14px;margin:8px 0;padding:8px 12px}body.scanning #camera-help{margin:8px 0}body.scanning #stop{margin:8px 0}body.scanning main{padding-top:0}
+@media(min-width:600px){body{padding:40px 24px}main{padding:24px;background:var(--panel);border:1px solid var(--raised);border-radius:20px}}
+</style>
+<body>
+<main>
+<header><p class="brand">Sweetspot</p><h1>Pair Focusrite Control 2</h1>
+<p class="intro">On your computer, approve <b>Sweetspot</b> in Focusrite Control 2. Then scan the QR code displayed by FC2.</p></header>
+<p id="status" role="status" aria-live="polite">Ready for QR photo upload.</p>
+<section id="scanner" aria-label="QR camera scanner">
+<video id="video" playsinline muted hidden></video>
+<button id="camera" type="button" hidden>Scan with camera</button>
+<button id="stop" type="button" hidden>Stop camera</button>
+<p id="camera-help" role="status" aria-live="polite">Live scanner is loading. You can already select and send a QR photo below.</p>
+</section>
+<noscript>Live scanning needs JavaScript. Photo upload and code submission below work without it.</noscript>
+<details id="photo-fallback" open><summary>Use a photo instead</summary>
+<form id="photo" action="upload" method="post" enctype="multipart/form-data"><label for="image">Photograph or select the FC2 QR code</label><input id="image" type="file" name="image" accept="image/jpeg,image/png" capture="environment" required><p id="photo-state" role="status" aria-live="polite">Choose a photo to upload it automatically. If it does not upload, tap Send QR photo.</p><img id="photo-preview" alt="Selected QR photo" hidden><button id="photo-send" type="submit">Send QR photo</button></form>
+</details>
+<details><summary>Enter decoded QR data</summary><p>If a QR scanner copied the hexadecimal payload, paste it here.</p><form id="code" action="code" method="post"><textarea name="payload" id="payload" rows="4" maxlength="8192" aria-label="FC2 QR payload"></textarea><button id="send" type="submit">Send code</button></form></details>
+</main>
+<script src="app.js" defer></script>
+</body>
+</html>

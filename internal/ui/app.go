@@ -258,17 +258,17 @@ func (a *App) render(s domain.Snapshot) {
 	if setText(a.volume, strconv.Itoa(st.Master.VolumeDB), pick(active, colText, colTextDisabled)) {
 		a.volBox.Refresh()
 	}
-	styleTag(a.mute, st.Master.Mute, active, colRedText)
-	styleTag(a.dim, st.Master.Dim, active, colYellow)
+	styleTag(a.mute, st.Master.Mute, active && (!s.Device.Control2 || s.Device.HasMute), colRedText)
+	styleTag(a.dim, st.Master.Dim, active && (!s.Device.Control2 || s.Device.HasDim), colYellow)
 	a.fader.SetDB(st.Master.VolumeDB)
-	a.fader.SetDisabled(!active)
+	a.fader.SetDisabled(!active || (s.Device.Control2 && !s.Device.HasVolume))
 	floor := float64(domain.ValidMeterFloor(st.Master.MeterFloorDB))
 	a.scale.SetFloor(floor)
 	a.meter.SetFloor(floor)
 	ml := s.MeterLevels()
 	a.meter.SetLevels(ml.LeftDB, ml.RightDB)
 	a.prePost.setText(map[bool]string{false: "PRE", true: "POST"}[st.Master.MeterPost])
-	a.meter.SetDisabled(!active)
+	a.meter.SetDisabled(!active || (s.Device.Control2 && !s.Device.HasMeter))
 
 	for _, id := range domain.Speakers {
 		spk, row := st.Speakers[id], a.speakers[id]
@@ -276,7 +276,7 @@ func (a *App) render(s domain.Snapshot) {
 		case spk.Disabled:
 			row.setText(spk.Name + " · disabled")
 			row.style(color.Transparent, nil, colTextDisabled, false)
-		case !active:
+		case !active || (s.Device.Control2 && !s.Device.SpeakerOutputs[id]):
 			row.setText(spk.Name)
 			row.style(colPanel, nil, colTextDisabled, spk.Selected)
 		case spk.Selected:
@@ -286,7 +286,7 @@ func (a *App) render(s domain.Snapshot) {
 			row.setText(spk.Name)
 			row.style(colPanel, nil, colTextIdle, false)
 		}
-		row.setEnabled(active && !spk.Disabled)
+		row.setEnabled(active && !spk.Disabled && (!s.Device.Control2 || s.Device.SpeakerOutputs[id]))
 	}
 	for i, b := range a.scenes {
 		b.set(st.Scenes[i], st.Speakers, st.Scene == domain.SceneID(i), active)
