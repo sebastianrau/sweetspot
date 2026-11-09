@@ -6,6 +6,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
+	"errors"
 	"image"
 	"image/color"
 	"image/draw"
@@ -280,5 +281,44 @@ func TestDensePairingQRInCameraFrame(t *testing.T) {
 		if e != nil || got != payload {
 			t.Fatalf("camera QR inverted=%v: err=%v payload matches=%v", inverted, e, got == payload)
 		}
+	}
+}
+
+// A desktop screenshot of FC2's window decodes, and the code is handed to
+// the pairing session once, as with the mobile page.
+func TestScreenshotSubmitOnce(t *testing.T) {
+	payload := strings.Repeat("0f1e2d3c4b5a6978", 16)
+	code, e := qrcode.New(payload, qrcode.Medium)
+	if e != nil {
+		t.Fatal(e)
+	}
+	shot := image.NewRGBA(image.Rect(0, 0, 2560, 1600))
+	draw.Draw(shot, shot.Bounds(), image.NewUniform(color.RGBA{R: 30, G: 30, B: 32, A: 255}), image.Point{}, draw.Src)
+	draw.Draw(shot, image.Rect(1500, 300, 2140, 940), code.Image(640), image.Point{}, draw.Src) // off-centre, as in a window
+	var file bytes.Buffer
+	if e = png.Encode(&file, shot); e != nil {
+		t.Fatal(e)
+	}
+	got, e := DecodeQRImage(bytes.NewReader(file.Bytes()))
+	if e != nil || got != payload {
+		t.Fatalf("screenshot: err=%v payload matches=%v", e, got == payload)
+	}
+
+	b := testBridge()
+	if e = b.Submit("not hex"); e == nil {
+		t.Fatal("an invalid code must be rejected")
+	}
+	if e = b.Submit(got); e != nil {
+		t.Fatal(e)
+	}
+	if v := <-b.QR; v != payload {
+		t.Fatal("submitted code not handed to pairing")
+	}
+	if e = b.Submit(got); !errors.Is(e, ErrAlreadySubmitted) {
+		t.Fatalf("second submit: %v", e)
+	}
+
+	if _, e = DecodeQRImage(bytes.NewReader([]byte("plain text"))); e == nil {
+		t.Error("a non-image file must be rejected")
 	}
 }

@@ -1,8 +1,11 @@
 package ui
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"net/url"
 	"slices"
 	"strconv"
@@ -14,6 +17,7 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
+	"fyne.io/fyne/v2/storage"
 	"fyne.io/fyne/v2/widget"
 	"github.com/skip2/go-qrcode"
 
@@ -200,10 +204,43 @@ func (s *settingsWindow) pairControl2() {
 			}
 			choices.OnChanged = show
 			show(choices.Selected)
-			hint := widget.NewLabel("1. Scan this Sweetspot QR with your phone.\n2. Accept the self-signed HTTPS certificate in the browser.\n3. Approve Sweetspot in FC2 and scan its QR with the mobile page.")
+			hint := widget.NewLabel("Approve Sweetspot in FC2. Then take a screenshot of the QR code FC2 shows (⇧⌘4) and load it here, or drop the file onto this window.\n\nOr with your phone: scan this Sweetspot QR, accept the self-signed HTTPS certificate, then scan FC2's QR with the mobile page.")
 			hint.Wrapping = fyne.TextWrapWord
-			content.Add(image)
+			shotInfo := widget.NewLabel("")
+			shotInfo.Wrapping = fyne.TextWrapWord
+			load := func(uri fyne.URI) {
+				shotInfo.SetText("Reading " + uri.Name() + "…")
+				go func() {
+					e := submitQRScreenshot(bridge, uri)
+					fyne.Do(func() {
+						if e != nil {
+							shotInfo.SetText(e.Error())
+						} else {
+							shotInfo.SetText("")
+						}
+					})
+				}()
+			}
+			loadButton := widget.NewButton("Load QR screenshot…", func() {
+				d := dialog.NewFileOpen(func(r fyne.URIReadCloser, e error) {
+					if e != nil || r == nil {
+						return
+					}
+					_ = r.Close()
+					load(r.URI())
+				}, win)
+				d.SetFilter(storage.NewExtensionFileFilter([]string{".png", ".jpg", ".jpeg"}))
+				d.Show()
+			})
+			win.SetOnDropped(func(_ fyne.Position, uris []fyne.URI) {
+				if len(uris) > 0 {
+					load(uris[0])
+				}
+			})
 			content.Add(hint)
+			content.Add(loadButton)
+			content.Add(shotInfo)
+			content.Add(image)
 			certificateHint := widget.NewLabel("This pairing session uses a self-signed HTTPS certificate. SHA-256 fingerprint:\n" + bridge.CertificateFingerprint)
 			certificateHint.Wrapping = fyne.TextWrapBreak
 			content.Add(certificateHint)
@@ -232,4 +269,29 @@ func (s *settingsWindow) pairControl2() {
 			s.opts.Apply()
 		}
 	}()
+}
+
+// maxScreenshotBytes bounds a loaded QR screenshot, like the mobile upload.
+const maxScreenshotBytes = 25 << 20
+
+// submitQRScreenshot reads FC2's pairing QR from an image file and hands it
+// to the pairing session, the same way the mobile page does.
+func submitQRScreenshot(bridge interface{ Submit(string) error }, uri fyne.URI) error {
+	r, e := storage.Reader(uri)
+	if e != nil {
+		return e
+	}
+	defer r.Close()
+	b, e := io.ReadAll(io.LimitReader(r, maxScreenshotBytes+1))
+	if e != nil {
+		return e
+	}
+	if len(b) > maxScreenshotBytes {
+		return errors.New("image too large; crop the screenshot to the QR code")
+	}
+	value, e := focusrite2.DecodeQRImage(bytes.NewReader(b))
+	if e != nil {
+		return e
+	}
+	return bridge.Submit(value)
 }
