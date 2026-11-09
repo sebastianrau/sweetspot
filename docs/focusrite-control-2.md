@@ -88,20 +88,32 @@ inside a mix are excluded from the selector.
 The choices come from the discovered object tree, so the mix count is not
 limited to the three buses on a 4i4. Incomplete or ambiguous control groups are
 omitted. Existing manual assignments are retained until explicitly replaced.
-Set a short speaker name if desired, then **Save**. Stereo linking, routing and
-which outputs are under hardware volume control remain configured in FC2.
+Then **Save**. Stereo linking, routing and which outputs are under hardware
+volume control remain configured in FC2.
 
-You can also map monitor Mute and native Dim. Without native Dim, Sweetspot
-applies its configured dim amount to the assigned output gains. With native Dim,
-FC2 supplies the attenuation and Sweetspot sends the undimmed base gain, avoiding
-double attenuation. Values below a device's supported gain range use output mute.
+As with Focusrite Control 1, each speaker takes its name from FC2: the custom
+name of its mix or output (`CustomName`), or its fixed name when none is set.
+Sweetspot reads the names on connect and every two seconds, so renaming a mix
+in FC2 renames the speaker.
+
+You can also map monitor Mute and FC2 Dim; both lists offer only the
+`MainOutputs` controls. Dim works as with Focusrite Control 1: Sweetspot
+lowers the assigned output gains by its configured dim amount, and FC2's
+`MainOutputs / Dim` follows in both directions. FC2's own Dim does not reach
+outputs fed by mixes; an output that is also under FC2's hardware volume
+control is dimmed by both. Values below a device's supported gain range use
+output mute.
 
 Unassigned elements are never written. Unmapped speakers, meters and master
 controls are disabled in the desktop UI. Sweetspot checks saved object paths,
 numbers, classes, device serials (when advertised), duplicate output assignments,
 and live gain limits before writing. Changed mappings need to be selected again.
 On reconnect, the selected physical output's current gain is adopted before any
-saved monitor state is pushed.
+saved monitor state is pushed, using the dim state it was written with; FC2's
+Mute and Dim are applied after that. A gain that carried dim or sat at the
+lower limit never yields a volume above the saved one, so un-dimming or
+un-muting after a reconnect is never louder than before. Only speakers with
+an assigned output count as the volume and meter source.
 
 The implementation is model-independent, but the functions available depend on
 what a given FC2 version/interface publishes through AES70. Vendor-specific

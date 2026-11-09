@@ -40,11 +40,13 @@ Tested with the Scarlett 4i4 (3rd Gen) and Scarlett 18i20 (3rd Gen).
 Select **Focusrite Control 2** under **Configuration → Focusrite** and click
 **Pair with Focusrite Control 2…**. Approve Sweetspot in FC2, take a
 screenshot of the pairing QR that FC2 shows and load it in the pairing dialog
-(or drop the file onto the settings window). Alternatively scan Sweetspot’s link QR with your
-phone, accept the local self-signed HTTPS certificate and scan FC2’s QR with
-the mobile page.
-After pairing, select one direct output or mix per speaker; gain, mute and meters
-are assigned together.
+(or drop the file onto the settings window). Alternatively scan Sweetspot’s
+link QR with your phone, accept the local self-signed HTTPS certificate and
+scan FC2’s QR with the mobile page.
+After pairing, select one direct output or mix per speaker; gain, mute, meters
+and the name (the mix name in FC2) are assigned together. Monitor Mute and Dim
+come from FC2's main outputs; Sweetspot dims the speakers itself, as with
+Focusrite Control 1.
 The FC2 transport discovers controls by their AES70 classes and roles, without
 a device-model allowlist. Available functions depend on what FC2 exposes;
 manual hardware checks passed with a Scarlett 4i4 (3rd Gen).
