@@ -317,3 +317,85 @@ func TestDimLowersOutputsAndSyncsFC2Dim(t *testing.T) {
 		t.Errorf("FC2 Dim on: %t, gain -45 dB: %t", dim, gain)
 	}
 }
+
+// Connecting never makes a later un-dim or un-mute louder than before.
+func TestConnectAdoptsVolumeSafely(t *testing.T) {
+	cfg := Config{MasterDim: ControlRef{Number: 4117}}
+	cfg.Outputs[domain.SpeakerA] = OutputBinding{Gain: ControlRef{Number: 4435}, Mute: ControlRef{Number: 4436}}
+	saved := func(volume int, dim bool) domain.State {
+		s := domain.DefaultState()
+		s.Master.Mute, s.Master.VolumeDB, s.Master.Dim, s.Master.DimDB = false, volume, dim, 20
+		s.Speakers[domain.SpeakerA].Selected = true
+		return s
+	}
+	connect := func(s domain.State, gain, floor float32, fc2Dim bool) domain.State {
+		known := map[uint32]value{4435: {number: gain, min: floor, max: 0}, 4117: {on: fc2Dim}}
+		snap := domain.Snapshot{State: s}
+		for _, cmd := range connectCommands(s, cfg, known) {
+			snap = domain.Apply(snap, cmd)
+		}
+		return snap.State
+	}
+	for _, c := range []struct {
+		name               string
+		volume             int
+		savedDim, fc2Dim   bool
+		gain, floor        float32
+		wantVolume, wantDB int // volume, and the gain after un-dimming
+	}{
+		{"FC2 dimmed while closed", -30, false, true, -30, -127, -30, -30},
+		{"undimmed in FC2 while closed", -30, true, false, -50, -127, -30, -30},
+		{"dimmed by Sweetspot", -30, true, true, -50, -127, -30, -30},
+		{"dim on during update from 0.9.0", -30, true, true, -30, -127, -30, -30},
+		{"gain at -127 with dim", -120, true, true, -127, -127, -120, -120},
+		{"gain at the device minimum", -100, false, false, -70, -70, -100, -100},
+		{"fader moved down in FC2", -30, false, false, -40, -127, -40, -40},
+	} {
+		s := connect(saved(c.volume, c.savedDim), c.gain, c.floor, c.fc2Dim)
+		if s.Master.VolumeDB != c.wantVolume || s.Master.Dim != c.fc2Dim {
+			t.Errorf("%s: volume %d dim %t, want %d %t", c.name, s.Master.VolumeDB, s.Master.Dim, c.wantVolume, c.fc2Dim)
+		}
+		s.Master.Dim = false
+		if got := s.OutputGainDB(); got != c.wantDB {
+			t.Errorf("%s: %d dB after un-dim, want %d", c.name, got, c.wantDB)
+		}
+	}
+	// While connected, a fader raised in FC2 is followed, also when dimmed.
+	if got := adoptVolume(saved(-30, true), value{number: -20, min: -127}, false); got != 0 {
+		t.Errorf("live adoption while dimmed = %d, want 0", got)
+	}
+}
+
+func TestMappedSource(t *testing.T) {
+	var cfg Config
+	cfg.Outputs[domain.SpeakerB].Gain = ControlRef{Number: 1}
+	cfg.Outputs[domain.Sub].Gain = ControlRef{Number: 2}
+	s := domain.DefaultState()
+	s.Speakers[domain.SpeakerA].Selected = true
+	s.Speakers[domain.SpeakerB].Selected = true
+	if id, ok := mappedSource(s, cfg); !ok || id != domain.SpeakerB {
+		t.Errorf("source = %v %t, want the mapped Speaker B", id, ok)
+	}
+	s.Speakers[domain.SpeakerB].Selected = false
+	s.Speakers[domain.Sub].Selected = true
+	if id, ok := mappedSource(s, cfg); !ok || id != domain.Sub {
+		t.Errorf("source = %v %t, want the mapped sub", id, ok)
+	}
+	s.Speakers[domain.Sub].Selected = false
+	if _, ok := mappedSource(s, cfg); ok {
+		t.Error("no source without a selected, mapped speaker")
+	}
+}
+
+func TestMasterMappingMustBeMainOutputs(t *testing.T) {
+	info := DeviceInfo{Controls: []Control{
+		{Number: 4117, Parent: 4112, Role: "Dim", Path: "MainOutputs / Dim", Kind: "bool"},
+		{Number: 4452, Parent: 4446, Role: "Mute", Path: "Mixes / 2 / Mute", Kind: "mute"},
+	}}
+	if e := info.ValidateMappings(Config{MasterDim: ControlRef{Number: 4117, Path: "MainOutputs / Dim"}}); e != nil {
+		t.Errorf("MainOutputs Dim rejected: %v", e)
+	}
+	if e := info.ValidateMappings(Config{MasterDim: ControlRef{Number: 4452, Path: "Mixes / 2 / Mute"}}); e == nil || !strings.Contains(e.Error(), "MainOutputs") {
+		t.Errorf("a mix mute as Dim must be rejected, got %v", e)
+	}
+}

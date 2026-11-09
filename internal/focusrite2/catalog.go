@@ -263,8 +263,12 @@ func (info DeviceInfo) ValidateMappings(cfg Config) error {
 		return fmt.Errorf("FC2 has a different interface; expected %s, found %s", cfg.DeviceSerial, info.Serial)
 	}
 	for _, ref := range []ControlRef{cfg.MasterMute, cfg.MasterDim} {
-		if _, e := info.resolve(ref, "bool", "mute"); e != nil {
+		c, e := info.resolve(ref, "bool", "mute")
+		if e != nil {
 			return e
+		}
+		if ref.Number != 0 && !MasterControl(c) {
+			return fmt.Errorf("FC2 monitor Mute/Dim %q is not a MainOutputs control; select it again in Configuration", ref.Path)
 		}
 	}
 	used := make(map[uint32]bool)

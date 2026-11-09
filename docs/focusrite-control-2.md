@@ -86,7 +86,11 @@ controls are disabled in the desktop UI. Sweetspot checks saved object paths,
 numbers, classes, device serials (when advertised), duplicate output assignments,
 and live gain limits before writing. Changed mappings need to be selected again.
 On reconnect, the selected physical output's current gain is adopted before any
-saved monitor state is pushed.
+saved monitor state is pushed, using the dim state it was written with; FC2's
+Mute and Dim are applied after that. A gain that carried dim or sat at the
+lower limit never yields a volume above the saved one, so un-dimming or
+un-muting after a reconnect is never louder than before. Only speakers with
+an assigned output count as the volume and meter source.
 
 The implementation is model-independent, but the functions available depend on
 what a given FC2 version/interface publishes through AES70. Vendor-specific
