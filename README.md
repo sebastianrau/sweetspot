@@ -123,7 +123,8 @@ The menu bar icon shows the monitor state at a glance:
 
 <p align="center"><img src="docs/images/menu-bar-icons.png" width="330" alt="Menu bar icon: a fader with its cap up for normal, down for Dim, crossed out for Mute, on a dark and a light menu bar"></p>
 
-Its menu has **Show**, **Dim**, **Mute**, **Scene A**, **Scene B**,
+A click on the icon opens the window. A right-click (or Ctrl-click) opens
+its menu with **Show**, **Dim**, **Mute**, **Scene A**, **Scene B**,
 **Configuration** and **Exit**. On
 macOS the app has no Dock icon; it lives in the menu bar.
 

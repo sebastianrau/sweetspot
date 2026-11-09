@@ -11,6 +11,7 @@ import (
 	"fyne.io/fyne/v2/driver/desktop"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
+	"fyne.io/systray"
 
 	"github.com/sebastianrau/sweetspot/internal/config"
 	"github.com/sebastianrau/sweetspot/internal/domain"
@@ -204,11 +205,16 @@ func (a *App) buildTray() {
 		exit,
 	)
 	desk.SetSystemTrayMenu(a.tray)
+	// A click on the icon opens the window; a right-click opens the menu.
+	// Fyne's SetSystemTrayWindow would only show the window and replace the
+	// close handling that pauses the meter, so the handler is set here.
+	systray.SetOnTapped(func() { fyne.Do(a.show) })
 	a.setTrayIcon(trayNormal)
 }
 
 func (a *App) show() {
 	a.window.Show()
+	a.window.RequestFocus()
 	a.meter.Resume()
 }
 
