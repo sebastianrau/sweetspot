@@ -15,7 +15,8 @@ FC2 shows its pairing QR code on the same computer, so no phone is needed:
    screenshot of the whole window works too).
 4. In the pairing window, click **Load QR screenshot…** and choose the file,
    or drop the file onto the window.
-5. Wait for **Paired with Focusrite Control 2**.
+5. Wait for **Paired with Focusrite Control 2**; the pairing window then
+   closes on its own.
 
 The screenshot is decoded locally with the same decoder and checks as a phone
 upload; a code is accepted once per pairing session.

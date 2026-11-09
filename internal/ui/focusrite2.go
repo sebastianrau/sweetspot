@@ -263,13 +263,27 @@ func (s *settingsWindow) pairControl2() {
 			s.draft.Focusrite.Backend = "control2"
 			s.draft.Focusrite.Control2 = cfg
 			s.buildFocusrite()
-			status.SetText("Paired with Focusrite Control 2. You can close this window.")
+			status.SetText("Paired with Focusrite Control 2.")
+			// Close shortly after success. The pairing session (and the phone's
+			// result page) ends on its own a few seconds later.
+			win.SetOnClosed(func() { s.pairCancel = nil; s.pairWindow = nil })
+			time.AfterFunc(pairedCloseDelay, func() { fyne.Do(win.Close) })
+			time.AfterFunc(pairedSessionEnd, cancel)
 		})
 		if s.opts.Apply != nil {
 			s.opts.Apply()
 		}
 	}()
 }
+
+const (
+	// pairedCloseDelay keeps the success message visible before the pairing
+	// window closes.
+	pairedCloseDelay = 1500 * time.Millisecond
+	// pairedSessionEnd ends the pairing session after the phone's result page
+	// had time to show the success (the bridge stops after ten seconds).
+	pairedSessionEnd = 12 * time.Second
+)
 
 // maxScreenshotBytes bounds a loaded QR screenshot, like the mobile upload.
 const maxScreenshotBytes = 25 << 20
