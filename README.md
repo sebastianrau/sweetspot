@@ -39,8 +39,8 @@ Tested with the Scarlett 4i4 (3rd Gen) and Scarlett 18i20 (3rd Gen).
 
 Select **Focusrite Control 2** under **Configuration → Focusrite** and click
 **Pair with Focusrite Control 2…**. Approve Sweetspot in FC2, take a
-screenshot of the pairing QR that FC2 shows and load it in the pairing window
-(or drop the file onto it). Alternatively scan Sweetspot’s link QR with your
+screenshot of the pairing QR that FC2 shows and load it in the pairing dialog
+(or drop the file onto the settings window). Alternatively scan Sweetspot’s link QR with your
 phone, accept the local self-signed HTTPS certificate and scan FC2’s QR with
 the mobile page.
 After pairing, select one direct output or mix per speaker; gain, mute and meters

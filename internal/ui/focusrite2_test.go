@@ -9,6 +9,8 @@ import (
 
 	"fyne.io/fyne/v2/storage"
 	"github.com/skip2/go-qrcode"
+
+	"github.com/sebastianrau/sweetspot/internal/domain"
 )
 
 type submitter struct{ got []string }
@@ -44,5 +46,26 @@ func TestSubmitQRScreenshot(t *testing.T) {
 	}
 	if err = submitQRScreenshot(&s, storage.NewFileURI(text)); err == nil || len(s.got) != 1 {
 		t.Errorf("a non-image file must be rejected without submitting (err=%v)", err)
+	}
+}
+
+// Pairing runs as a modal dialog over the settings, so nothing else can be
+// changed meanwhile; closing it ends the pairing.
+func TestPairingIsModal(t *testing.T) {
+	a, _ := newTestApp(t)
+	s := a.settings
+	s.live = domain.DefaultState()
+	s.show()
+	s.pairControl2()
+	if s.pairDialog == nil || s.win.Canvas().Overlays().Top() == nil {
+		t.Fatal("pairing must open a modal dialog over the settings")
+	}
+	s.pairControl2() // a second click shows the same dialog
+	if n := len(s.win.Canvas().Overlays().List()); n != 1 {
+		t.Errorf("%d overlays, want one pairing dialog", n)
+	}
+	s.pairDialog.Hide()
+	if s.pairDialog != nil || s.win.Canvas().Overlays().Top() != nil {
+		t.Error("closing the dialog must end the pairing")
 	}
 }

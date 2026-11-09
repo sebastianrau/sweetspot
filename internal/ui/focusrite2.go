@@ -140,23 +140,28 @@ func (s *settingsWindow) control2Section() fyne.CanvasObject {
 }
 
 func (s *settingsWindow) pairControl2() {
-	if s.pairCancel != nil {
-		s.pairWindow.Show()
-		s.pairWindow.RequestFocus()
+	if s.pairDialog != nil {
+		s.pairDialog.Show()
 		return
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-	s.pairCancel = cancel
-	win := fyne.CurrentApp().NewWindow("Sweetspot · FC2 Pairing")
-	s.pairWindow = win
+	win := s.win
 	status := widget.NewLabel("Finding Focusrite Control 2 on this computer…")
 	status.Wrapping = fyne.TextWrapWord
 	content := container.NewVBox(status)
-	win.SetContent(container.NewVScroll(content))
-	win.Resize(fyne.NewSize(420, 560))
-	closePair := func() { cancel(); s.pairCancel = nil; s.pairWindow = nil; win.Close() }
-	win.SetOnClosed(func() { cancel(); s.pairCancel = nil; s.pairWindow = nil })
-	win.Show()
+	// A modal dialog over the settings: nothing else can be changed while
+	// pairing runs.
+	var pair dialog.Dialog
+	closePair := func() { cancel(); pair.Hide() }
+	// Close is always there, also while FC2 is still being searched for.
+	body := container.NewBorder(nil, container.NewHBox(layout.NewSpacer(), widget.NewButton("Close", closePair)), nil, nil, container.NewVScroll(content))
+	pair = dialog.NewCustomWithoutButtons("FC2 Pairing", body, win)
+	s.pairDialog = pair
+	ended := func() { s.pairDialog = nil; win.SetOnDropped(nil) }
+	pair.SetOnClosed(func() { cancel(); ended() })
+	size := win.Canvas().Size()
+	pair.Resize(fyne.NewSize(min(420, size.Width-24), min(560, size.Height-24)))
+	pair.Show()
 	go func() {
 		cfg, e := focusrite2.Discover(ctx, focusrite2.Config{})
 		if e == nil {
@@ -179,7 +184,7 @@ func (s *settingsWindow) pairControl2() {
 			bridge, e = focusrite2.StartBridge(ctx)
 		}
 		if e != nil {
-			fyne.Do(func() { status.SetText(e.Error()); content.Add(widget.NewButton("Close", closePair)) })
+			fyne.Do(func() { status.SetText(e.Error()) })
 			return
 		}
 		update := func(message string) { bridge.Status(message); fyne.Do(func() { status.SetText(message) }) }
@@ -246,7 +251,6 @@ func (s *settingsWindow) pairControl2() {
 			content.Add(certificateHint)
 			content.Add(choices)
 			content.Add(link)
-			content.Add(widget.NewButton("Close", closePair))
 		})
 		e = focusrite2.Pair(ctx, cfg, bridge.QR, update)
 		bridge.Finish(e)
@@ -266,8 +270,8 @@ func (s *settingsWindow) pairControl2() {
 			status.SetText("Paired with Focusrite Control 2.")
 			// Close shortly after success. The pairing session (and the phone's
 			// result page) ends on its own a few seconds later.
-			win.SetOnClosed(func() { s.pairCancel = nil; s.pairWindow = nil })
-			time.AfterFunc(pairedCloseDelay, func() { fyne.Do(win.Close) })
+			pair.SetOnClosed(ended)
+			time.AfterFunc(pairedCloseDelay, func() { fyne.Do(pair.Hide) })
 			time.AfterFunc(pairedSessionEnd, cancel)
 		})
 		if s.opts.Apply != nil {
@@ -278,7 +282,7 @@ func (s *settingsWindow) pairControl2() {
 
 const (
 	// pairedCloseDelay keeps the success message visible before the pairing
-	// window closes.
+	// dialog closes.
 	pairedCloseDelay = 1500 * time.Millisecond
 	// pairedSessionEnd ends the pairing session after the phone's result page
 	// had time to show the success (the bridge stops after ten seconds).

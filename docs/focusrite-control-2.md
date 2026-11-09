@@ -5,7 +5,9 @@ under **Configuration → Focusrite → Focusrite Control**.
 
 ## Pairing with a screenshot
 
-FC2 shows its pairing QR code on the same computer, so no phone is needed:
+Pairing runs in a modal dialog over the settings; the other settings cannot
+be changed until it is closed. FC2 shows its pairing QR code on the same
+computer, so no phone is needed:
 
 1. In Sweetspot, open **Configuration → Focusrite**, select
    **Focusrite Control 2**, and click **Pair with Focusrite Control 2…**.
@@ -13,9 +15,9 @@ FC2 shows its pairing QR code on the same computer, so no phone is needed:
    pairing QR code.
 3. Take a screenshot of the QR code (macOS: ⇧⌘4 and drag over the code; a
    screenshot of the whole window works too).
-4. In the pairing window, click **Load QR screenshot…** and choose the file,
-   or drop the file onto the window.
-5. Wait for **Paired with Focusrite Control 2**; the pairing window then
+4. In the pairing dialog, click **Load QR screenshot…** and choose the file,
+   or drop the file onto the settings window.
+5. Wait for **Paired with Focusrite Control 2**; the pairing dialog then
    closes on its own.
 
 The screenshot is decoded locally with the same decoder and checks as a phone
@@ -32,7 +34,7 @@ upload; a code is accepted once per pairing session.
    If several network addresses are listed, choose the computer's Wi-Fi or
    Ethernet address. The link uses HTTPS with a self-signed certificate.
    Accept the browser certificate warning for this local Sweetspot session.
-   Its SHA-256 fingerprint is shown in the Sweetspot pairing window.
+   Its SHA-256 fingerprint is shown in the Sweetspot pairing dialog.
 4. Approve **Sweetspot** in the FC2 desktop app. FC2 then displays its own
    pairing QR code.
 5. On the mobile Sweetspot page, tap **Scan with camera**, allow camera access,
@@ -60,7 +62,7 @@ Other browsers send reduced JPEG camera frames to Sweetspot's HTTPS scan endpoin
 where the same local decoder used for photo uploads reads the QR code. Frames
 are processed in memory and discarded; they are never sent to a third party.
 
-Closing the pairing window cancels its network activity. Pairing expires after
+Closing the pairing dialog cancels its network activity. Pairing expires after
 five minutes. The LAN server stops ten seconds after success or failure, allowing
 the phone to receive the result. Each session uses a random 256-bit URL token.
 The page only transfers QR data; it does not expose credentials or audio controls.
