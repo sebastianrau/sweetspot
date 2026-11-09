@@ -67,6 +67,9 @@ five minutes. The LAN server stops ten seconds after success or failure, allowin
 the phone to receive the result. Each session uses a random 256-bit URL token.
 The page only transfers QR data; it does not expose credentials or audio controls.
 The client private key stays in Sweetspot's owner-readable settings file.
+Until a pairing succeeds, only that key is saved: the previously trusted FC2
+identity stays pinned when a pairing is cancelled or fails, and mappings saved
+before are kept.
 
 ## Assigning controls on any interface
 

@@ -171,16 +171,14 @@ func (s *settingsWindow) pairControl2() {
 		if e == nil {
 			stored := s.opts.Store.Get().Focusrite.Control2
 			cfg.PrivateKey = stored.PrivateKey
-			cfg.Outputs = stored.Outputs
-			cfg.MasterMute = stored.MasterMute
-			cfg.MasterDim = stored.MasterDim
-			cfg.DeviceSerial = stored.DeviceSerial
 			cfg, e = cfg.WithIdentity()
 		}
 		if e == nil {
 			// Save before requesting approval, so closing the app cannot lose the
 			// identity that FC2 has just approved. The settings file has mode 0600.
-			s.opts.Store.Update(func(c *config.Config) { c.Focusrite.Control2 = cfg })
+			// Only the client key: the trusted FC2 server stays pinned until
+			// the pairing succeeds, so a cancelled pairing changes nothing else.
+			s.opts.Store.Update(func(c *config.Config) { c.Focusrite.Control2.PrivateKey = cfg.PrivateKey })
 			e = s.opts.Store.Save()
 		}
 		if e != nil {
@@ -206,7 +204,7 @@ func (s *settingsWindow) pairControl2() {
 			fyne.Do(func() { status.SetText(message) })
 		}
 		fyne.Do(func() {
-			s.draft.Focusrite.Control2 = cfg
+			s.draft.Focusrite.Control2.PrivateKey = cfg.PrivateKey
 			hint := widget.NewLabel("Approve Sweetspot in FC2. Then take a screenshot of the QR code FC2 shows (⇧⌘4) and load it here, or drop the file onto this window.")
 			hint.Wrapping = fyne.TextWrapWord
 			shotInfo := widget.NewLabel("")
@@ -286,14 +284,18 @@ func (s *settingsWindow) pairControl2() {
 			update(fmt.Sprintf("Pairing failed: %v", e))
 			return
 		}
-		s.opts.Store.Update(func(c *config.Config) { c.Focusrite.Backend = "control2"; c.Focusrite.Control2 = cfg })
+		// Keep the mappings as they are now; take only identity and server.
+		s.opts.Store.Update(func(c *config.Config) {
+			c.Focusrite.Backend = "control2"
+			c.Focusrite.Control2 = c.Focusrite.Control2.AdoptPairing(cfg)
+		})
 		if e = s.opts.Store.Save(); e != nil {
 			update("Paired, but could not save settings: " + e.Error())
 			return
 		}
 		fyne.Do(func() {
 			s.draft.Focusrite.Backend = "control2"
-			s.draft.Focusrite.Control2 = cfg
+			s.draft.Focusrite.Control2 = s.draft.Focusrite.Control2.AdoptPairing(cfg)
 			s.buildFocusrite()
 			status.SetText("Paired with Focusrite Control 2.")
 			// Close shortly after success. The pairing session (and the phone's

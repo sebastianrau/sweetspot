@@ -61,6 +61,19 @@ func (c Config) Validate() error {
 	_, e := key(c.ServerPublicKey)
 	return e
 }
+
+// AdoptPairing takes the client identity and the trusted server (address,
+// ports, public key) of a successful pairing. Mappings and the device serial
+// stay as they are.
+func (c Config) AdoptPairing(paired Config) Config {
+	c.PrivateKey = paired.PrivateKey
+	c.ServerPublicKey = paired.ServerPublicKey
+	c.Host = paired.Host
+	c.OnboardingPort = paired.OnboardingPort
+	c.SecurePort = paired.SecurePort
+	return c
+}
+
 func (c Config) WithIdentity() (Config, error) {
 	if c.PrivateKey != "" {
 		_, e := c.identity()
