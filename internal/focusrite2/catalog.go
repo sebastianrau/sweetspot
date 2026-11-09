@@ -80,7 +80,7 @@ func classKind(class []uint16) string {
 		path []uint16
 		kind string
 	}{
-		{[]uint16{1, 1, 1, 5}, "gain"}, {[]uint16{1, 1, 1, 2}, "mute"}, {[]uint16{1, 1, 1, 1, 1}, "bool"}, {[]uint16{1, 1, 2, 2}, "level"}, {[]uint16{1, 1, 2, 1, 12}, "string"},
+		{[]uint16{1, 1, 1, 5}, "gain"}, {[]uint16{1, 1, 1, 2}, "mute"}, {[]uint16{1, 1, 1, 1, 1}, "bool"}, {[]uint16{1, 1, 2, 2}, "level"}, {[]uint16{1, 1, 2, 1, 12}, "string"}, {[]uint16{1, 1, 1, 1, 12}, "text"},
 	} {
 		if len(class) >= len(entry.path) && slices.Equal(class[:len(entry.path)], entry.path) {
 			return entry.kind
@@ -230,6 +230,34 @@ func (info DeviceInfo) resolve(ref ControlRef, kinds ...string) (Control, error)
 	}
 	return Control{}, fmt.Errorf("FC2 mapping %q (#%d) changed or is unavailable; select it again in Configuration", ref.Path, ref.Number)
 }
+
+// MasterControl reports whether c can be the monitor Mute or Dim: an on/off
+// control of the MainOutputs block.
+func MasterControl(c Control) bool {
+	return strings.HasPrefix(c.Path, "MainOutputs / ") && (c.Kind == "mute" || c.Kind == "bool")
+}
+
+// nameControls returns the name controls next to an output's gain: the
+// user-set CustomName and the fixed Name as fallback. Either may be missing.
+func (info DeviceInfo) nameControls(o OutputBinding) (custom, fixed Control) {
+	gain, e := info.resolve(o.Gain, "gain")
+	if e != nil || gain.Number == 0 {
+		return Control{}, Control{}
+	}
+	for _, c := range info.Controls {
+		if c.Parent != gain.Parent {
+			continue
+		}
+		switch {
+		case c.Role == "CustomName" && c.Kind == "text":
+			custom = c
+		case c.Role == "Name" && c.Kind == "string":
+			fixed = c
+		}
+	}
+	return custom, fixed
+}
+
 func (info DeviceInfo) ValidateMappings(cfg Config) error {
 	if cfg.DeviceSerial != "" && cfg.DeviceSerial != info.Serial {
 		return fmt.Errorf("FC2 has a different interface; expected %s, found %s", cfg.DeviceSerial, info.Serial)

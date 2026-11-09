@@ -42,8 +42,10 @@ Select **Focusrite Control 2** under **Configuration → Focusrite** and click
 accept the local self-signed HTTPS certificate, then use the mobile page’s
 camera scanner to read the pairing QR displayed by FC2. Photo upload remains
 available as a fallback.
-After pairing, select one direct output or mix per speaker; gain, mute and meters
-are assigned together.
+After pairing, select one direct output or mix per speaker; gain, mute, meters
+and the name (the mix name in FC2) are assigned together. Monitor Mute and Dim
+come from FC2's main outputs; Sweetspot dims the speakers itself, as with
+Focusrite Control 1.
 The FC2 transport discovers controls by their AES70 classes and roles, without
 a device-model allowlist. Available functions depend on what FC2 exposes;
 manual hardware checks passed with a Scarlett 4i4 (3rd Gen).
