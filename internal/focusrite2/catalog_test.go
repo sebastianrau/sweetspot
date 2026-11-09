@@ -402,6 +402,63 @@ func TestMasterMappingMustBeMainOutputs(t *testing.T) {
 
 // FC2 meters a mix after its gain. Sweetspot reports the level before the
 // fader, so PRE stays put when the volume moves and POST gives FC2's value.
+func TestFC2MeterRejectsTransitionalReadings(t *testing.T) {
+	s := domain.DefaultState()
+	cfg := Config{}
+	cfg.Outputs[domain.SpeakerA] = OutputBinding{
+		Gain: ControlRef{Number: 1}, Mute: ControlRef{Number: 2},
+		MeterLeft: ControlRef{Number: 3}, MeterRight: ControlRef{Number: 4},
+	}
+	cfg.Outputs[domain.SpeakerB] = cfg.Outputs[domain.SpeakerA]
+	actual := map[uint32]value{1: {number: -20}, 3: {number: -32}, 4: {number: -38}}
+	m := meterContextFor(s, cfg, actual)
+	if l, valid := m.read(s, cfg, actual); !valid || l.LeftDB != -12 {
+		t.Fatalf("stable reading = %+v, valid %v", l, valid)
+	}
+
+	// The gain has moved, but FC2 still returns the old post-gain peak.
+	actual[1] = value{number: -50}
+	if l, valid := m.read(s, cfg, actual); valid {
+		t.Fatalf("accepted false peak after gain change: %+v", l)
+	}
+	actual[3], actual[4] = value{number: -62}, value{number: -68}
+	if l, valid := m.read(s, cfg, actual); !valid || l.LeftDB != -12 || l.RightDB != -18 {
+		t.Fatalf("settled reading = %+v, valid %v", l, valid)
+	}
+
+	// Even identical gains cannot make the first reading of a new source safe.
+	s = domain.Apply(domain.Snapshot{State: s}, domain.SelectSpeaker{ID: domain.SpeakerB, On: true}).State
+	if l, valid := m.read(s, cfg, actual); valid {
+		t.Fatalf("accepted transitional speaker reading: %+v", l)
+	}
+	if _, valid := m.read(s, cfg, actual); !valid {
+		t.Fatal("stable speaker reading rejected")
+	}
+	actual[2] = value{on: true}
+	if _, valid := m.read(s, cfg, actual); valid {
+		t.Fatal("accepted transitional mute reading")
+	}
+}
+
+func TestFC2MeterSilenceUsesReportedMinimum(t *testing.T) {
+	out := OutputBinding{Gain: ControlRef{Number: 1}, MeterLeft: ControlRef{Number: 2}, MeterRight: ControlRef{Number: 3}}
+	actual := map[uint32]value{
+		1: {number: -75},
+		2: {number: -63, min: -63, max: 0},
+		3: {number: -96, min: -96, max: 0},
+	}
+	if got := preFaderLevels(out, actual); got != domain.Silence {
+		t.Fatalf("meter floor produced a false peak: %+v", got)
+	}
+	// Real signals above each meter's floor still have the gain undone.
+	actual[2] = value{number: -60, min: -63, max: 0}
+	actual[3] = value{number: -90, min: -96, max: 0}
+	actual[1] = value{number: -20}
+	if got := preFaderLevels(out, actual); got != (domain.Levels{LeftDB: -40, RightDB: -70}) {
+		t.Fatalf("signal above meter floor = %+v", got)
+	}
+}
+
 func TestFC2MeterPreAndPost(t *testing.T) {
 	out := OutputBinding{Gain: ControlRef{Number: 4435}, MeterLeft: ControlRef{Number: 4433}, MeterRight: ControlRef{Number: 4434}}
 	actual := map[uint32]value{4435: {number: -48}, 4433: {number: -60}, 4434: {number: -127}}

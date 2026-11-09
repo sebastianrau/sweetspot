@@ -302,6 +302,32 @@ func TestLongNamesAreShortened(t *testing.T) {
 	}
 }
 
+// Control snapshots must not replay an old peak after the meter has decayed.
+func TestMeterDoesNotReplayLevelsOnControlChanges(t *testing.T) {
+	a, _ := newTestApp(t)
+	s := domain.Snapshot{State: domain.DefaultState(), Device: connected(),
+		Levels: domain.Levels{LeftDB: -6, RightDB: -12}}
+	a.render(s)
+	a.meter.left, a.meter.right = -20, -26 // decay since the last reading
+
+	for _, cmd := range []domain.Command{
+		domain.SetVolume{DB: -30},
+		domain.ToggleSpeaker{ID: domain.SpeakerB},
+	} {
+		s = domain.Apply(s, cmd)
+		a.render(s)
+		if a.meter.left != -20 || a.meter.right != -26 {
+			t.Fatalf("%T replayed stale levels: %v, %v", cmd, a.meter.left, a.meter.right)
+		}
+	}
+
+	s.Levels = domain.Levels{LeftDB: -8, RightDB: -14}
+	a.render(s)
+	if a.meter.left != -8 || a.meter.right != -14 {
+		t.Errorf("fresh reading did not raise the meter: %v, %v", a.meter.left, a.meter.right)
+	}
+}
+
 func TestPrePostSwitch(t *testing.T) {
 	a, cmds := newTestApp(t)
 	s := domain.Snapshot{State: domain.DefaultState(), Device: connected()}
