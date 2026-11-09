@@ -92,7 +92,7 @@ func newServices(ctx context.Context, store *config.Store, ctrl *controller.Cont
 			return startService(ctx, func(ctx context.Context) {
 				focusrite2.Run(ctx, cfg.Control2, ctrl.Snapshot, ctrl.Submit, func(info focusrite2.DeviceInfo) {
 					devices.publish([]focusrite.DeviceInfo{{Model: info.Model, SerialNumber: info.Serial, Control2: &info}})
-				})
+				}, func(remapped focusrite2.Config) { s.saveRemapped(cfg, remapped) })
 			})
 		}
 		client := focusrite.NewClient()
@@ -137,6 +137,19 @@ func newServices(ctx context.Context, store *config.Store, ctrl *controller.Cont
 		return svc
 	}
 	return s
+}
+
+// saveRemapped stores FC2 mappings that followed renumbered controls. Like an
+// adopted interface, this is not a settings change on the next apply.
+func (s *services) saveRemapped(running focusrite.Config, remapped focusrite2.Config) {
+	running.Control2 = running.Control2.WithMappings(remapped)
+	s.fcConfig.Store(&running)
+	s.store.Update(func(stored *config.Config) {
+		stored.Focusrite.Control2 = stored.Focusrite.Control2.WithMappings(remapped)
+	})
+	if err := s.store.Save(); err != nil {
+		log.Error("saving renumbered FC2 mappings failed", "err", err)
+	}
 }
 
 // apply starts the services, or restarts those whose settings changed.

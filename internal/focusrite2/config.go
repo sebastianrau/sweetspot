@@ -74,6 +74,12 @@ func (c Config) AdoptPairing(paired Config) Config {
 	return c
 }
 
+// WithMappings takes the control mappings of from: Mute, Dim and outputs.
+func (c Config) WithMappings(from Config) Config {
+	c.MasterMute, c.MasterDim, c.Outputs = from.MasterMute, from.MasterDim, from.Outputs
+	return c
+}
+
 func (c Config) WithIdentity() (Config, error) {
 	if c.PrivateKey != "" {
 		_, e := c.identity()

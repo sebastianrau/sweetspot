@@ -9,6 +9,7 @@ import (
 
 	"github.com/sebastianrau/sweetspot/internal/config"
 	"github.com/sebastianrau/sweetspot/internal/focusrite"
+	"github.com/sebastianrau/sweetspot/internal/focusrite2"
 	"github.com/sebastianrau/sweetspot/internal/mcu"
 	"github.com/sebastianrau/sweetspot/internal/osc"
 )
@@ -136,6 +137,25 @@ func TestAdoptionIsNotAChange(t *testing.T) {
 	s.apply()
 	if started, _ := fake.take(); len(started) != 0 {
 		t.Errorf("adoption restarted %v", started)
+	}
+}
+
+// Renumbered FC2 mappings are saved without a reconnect.
+func TestRemappedFC2IsSavedNotAChange(t *testing.T) {
+	s, store, fake := newTestServices(t)
+	s.apply()
+	fake.take()
+
+	remapped := store.Get().Focusrite.Control2
+	remapped.MasterDim = focusrite2.ControlRef{Number: 6083, Path: "MainOutputs / Dim"}
+	s.saveRemapped(*s.fcConfig.Load(), remapped)
+
+	if got := store.Get().Focusrite.Control2.MasterDim; got != remapped.MasterDim {
+		t.Errorf("stored Dim = %+v", got)
+	}
+	s.apply()
+	if started, _ := fake.take(); len(started) != 0 {
+		t.Errorf("remapping restarted %v", started)
 	}
 }
 

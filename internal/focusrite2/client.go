@@ -101,7 +101,9 @@ func (c *oca) write(ctx context.Context, control Control, v value) error {
 
 // Run discovers the live object model on each reconnect. Only explicit,
 // type-checked mappings are written; there is no model or object-ID allowlist.
-func Run(ctx context.Context, cfg Config, current func() domain.Snapshot, submit func(domain.Command), catalog func(DeviceInfo)) {
+// When FC2 has renumbered its objects, the mappings follow their paths and
+// remapped receives cfg with the new numbers, to be saved.
+func Run(ctx context.Context, cfg Config, current func() domain.Snapshot, submit func(domain.Command), catalog func(DeviceInfo), remapped func(Config)) {
 	var lastInfo DeviceInfo
 	report := func(info DeviceInfo) {
 		if info.Controls != nil {
@@ -110,6 +112,10 @@ func Run(ctx context.Context, cfg Config, current func() domain.Snapshot, submit
 			lastInfo.Error = info.Error
 		}
 		catalog(lastInfo)
+	}
+	remap := func(c Config) {
+		cfg = cfg.WithMappings(c)
+		remapped(cfg)
 	}
 	for ctx.Err() == nil {
 		live, e := Discover(ctx, cfg)
@@ -120,7 +126,7 @@ func Run(ctx context.Context, cfg Config, current func() domain.Snapshot, submit
 			e = nil
 		}
 		if e == nil {
-			e = runSession(ctx, live, current, submit, report)
+			e = runSession(ctx, live, current, submit, report, remap)
 		}
 		submit(domain.SetDevice{})
 		if ctx.Err() != nil {
@@ -135,7 +141,7 @@ func Run(ctx context.Context, cfg Config, current func() domain.Snapshot, submit
 		}
 	}
 }
-func runSession(ctx context.Context, cfg Config, current func() domain.Snapshot, submit func(domain.Command), catalog func(DeviceInfo)) error {
+func runSession(ctx context.Context, cfg Config, current func() domain.Snapshot, submit func(domain.Command), catalog func(DeviceInfo), remap func(Config)) error {
 	timeout, cancel := context.WithTimeout(ctx, 5*time.Second)
 	c, e := secure(timeout, cfg)
 	cancel()
@@ -152,6 +158,11 @@ func runSession(ctx context.Context, cfg Config, current func() domain.Snapshot,
 		return e
 	}
 	catalog(info)
+	if rebound := info.Rebind(cfg); rebound != cfg {
+		log.Info("FC2 renumbered its controls, mappings follow their paths")
+		cfg = rebound
+		remap(cfg)
+	}
 	if e = info.ValidateMappings(cfg); e != nil {
 		return e
 	}
@@ -276,12 +287,7 @@ func runSession(ctx context.Context, cfg Config, current func() domain.Snapshot,
 			if ref := out.Gain; actual[ref.Number].number != known[ref.Number].number {
 				apply(domain.SetVolume{DB: adoptVolume(snap.State, actual[ref.Number], false)})
 			}
-			if out.MeterLeft.Number != 0 {
-				levels.LeftDB = float64(actual[out.MeterLeft.Number].number)
-			}
-			if out.MeterRight.Number != 0 {
-				levels.RightDB = float64(actual[out.MeterRight.Number].number)
-			}
+			levels = preFaderLevels(out, actual)
 		}
 		if snap.Levels != levels {
 			apply(domain.SetLevels{Levels: levels})
@@ -305,6 +311,34 @@ func connectCommands(s domain.State, cfg Config, known map[uint32]value) []domai
 		cmds = append(cmds, domain.SetDim{On: known[cfg.MasterDim.Number].on})
 	}
 	return cmds
+}
+
+// preFaderLevels turns FC2's mix meters into the levels before Sweetspot's
+// volume, as Focusrite Control 1 reports them. FC2 meters a mix after its
+// gain, so the gain actually set is added back. Silence stays silence: a
+// muted or quiet mix must not show the gain as a level.
+func preFaderLevels(out OutputBinding, actual map[uint32]value) domain.Levels {
+	levels := domain.Silence
+	pre := func(meter, gain ControlRef) float64 {
+		if meter.Number == 0 {
+			return domain.SilenceDB
+		}
+		db := float64(actual[meter.Number].number)
+		if db <= domain.SilenceDB+0.5 {
+			return domain.SilenceDB
+		}
+		if gain.Number != 0 {
+			db -= float64(actual[gain.Number].number)
+		}
+		return max(db, domain.SilenceDB)
+	}
+	rightGain := out.Gain
+	if out.GainRight.Number != 0 {
+		rightGain = out.GainRight
+	}
+	levels.LeftDB = pre(out.MeterLeft, out.Gain)
+	levels.RightDB = pre(out.MeterRight, rightGain)
+	return levels
 }
 
 // mappedSource is the speaker whose output the volume and the meters follow:
