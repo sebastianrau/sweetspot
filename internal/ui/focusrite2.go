@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -24,7 +25,10 @@ import (
 	"github.com/sebastianrau/sweetspot/internal/config"
 	"github.com/sebastianrau/sweetspot/internal/domain"
 	"github.com/sebastianrau/sweetspot/internal/focusrite2"
+	"github.com/sebastianrau/sweetspot/internal/logging"
 )
+
+var log = logging.New("ui")
 
 func (s *settingsWindow) control2Section() fyne.CanvasObject {
 	hint := widget.NewLabel("Choose a direct output or a mix for each speaker. Gain, mute and meters are assigned together. If no direct output is available, choose a mix and route it to your speaker outputs in FC2.")
@@ -179,44 +183,38 @@ func (s *settingsWindow) pairControl2() {
 			s.opts.Store.Update(func(c *config.Config) { c.Focusrite.Control2 = cfg })
 			e = s.opts.Store.Save()
 		}
-		var bridge *focusrite2.Bridge
-		if e == nil {
-			bridge, e = focusrite2.StartBridge(ctx)
-		}
 		if e != nil {
 			fyne.Do(func() { status.SetText(e.Error()) })
 			return
 		}
-		update := func(message string) { bridge.Status(message); fyne.Do(func() { status.SetText(message) }) }
+		// A screenshot needs no network. The phone page is optional: without
+		// a LAN address it is left out and the screenshot still works.
+		inbox := newQRInbox()
+		var submitter interface{ Submit(string) error } = inbox
+		qr := (<-chan string)(inbox.ch)
+		bridge, bridgeErr := focusrite2.StartBridge(ctx)
+		if bridgeErr == nil {
+			submitter, qr = bridge, bridge.QR
+		} else {
+			log.Warn("FC2 phone pairing page unavailable", "err", bridgeErr)
+			bridge = nil
+		}
+		update := func(message string) {
+			if bridge != nil {
+				bridge.Status(message)
+			}
+			fyne.Do(func() { status.SetText(message) })
+		}
 		fyne.Do(func() {
 			s.draft.Focusrite.Control2 = cfg
-			choices := newSelect(bridge.URLs, nil)
-			choices.Selected = bridge.URLs[0]
-			image := canvas.NewImageFromResource(nil)
-			image.SetMinSize(fyne.NewSize(256, 256))
-			image.FillMode = canvas.ImageFillContain
-			image.ScaleMode = canvas.ImageScalePixels
-			link := widget.NewHyperlink("Open mobile pairing page", nil)
-			show := func(address string) {
-				png, e := qrcode.Encode(address, qrcode.Medium, 512)
-				if e != nil {
-					dialog.ShowError(e, win)
-					return
-				}
-				image.Resource = fyne.NewStaticResource("fc2-pair.png", png)
-				image.Refresh()
-				link.URL, _ = url.Parse(address)
-			}
-			choices.OnChanged = show
-			show(choices.Selected)
-			hint := widget.NewLabel("Approve Sweetspot in FC2. Then take a screenshot of the QR code FC2 shows (⇧⌘4) and load it here, or drop the file onto this window.\n\nOr with your phone: scan this Sweetspot QR, accept the self-signed HTTPS certificate, then scan FC2's QR with the mobile page.")
+			hint := widget.NewLabel("Approve Sweetspot in FC2. Then take a screenshot of the QR code FC2 shows (⇧⌘4) and load it here, or drop the file onto this window.")
 			hint.Wrapping = fyne.TextWrapWord
 			shotInfo := widget.NewLabel("")
 			shotInfo.Wrapping = fyne.TextWrapWord
 			load := func(uri fyne.URI) {
 				shotInfo.SetText("Reading " + uri.Name() + "…")
 				go func() {
-					e := submitQRScreenshot(bridge, uri)
+					e := submitQRScreenshot(submitter, uri)
 					fyne.Do(func() {
 						if e != nil {
 							shotInfo.SetText(e.Error())
@@ -245,6 +243,34 @@ func (s *settingsWindow) pairControl2() {
 			content.Add(hint)
 			content.Add(loadButton)
 			content.Add(shotInfo)
+			if bridge == nil {
+				unavailable := widget.NewLabel("Pairing with a phone is not available: " + bridgeErr.Error())
+				unavailable.Wrapping = fyne.TextWrapWord
+				content.Add(unavailable)
+				return
+			}
+			choices := newSelect(bridge.URLs, nil)
+			choices.Selected = bridge.URLs[0]
+			image := canvas.NewImageFromResource(nil)
+			image.SetMinSize(fyne.NewSize(256, 256))
+			image.FillMode = canvas.ImageFillContain
+			image.ScaleMode = canvas.ImageScalePixels
+			link := widget.NewHyperlink("Open mobile pairing page", nil)
+			show := func(address string) {
+				png, e := qrcode.Encode(address, qrcode.Medium, 512)
+				if e != nil {
+					dialog.ShowError(e, win)
+					return
+				}
+				image.Resource = fyne.NewStaticResource("fc2-pair.png", png)
+				image.Refresh()
+				link.URL, _ = url.Parse(address)
+			}
+			choices.OnChanged = show
+			show(choices.Selected)
+			phone := widget.NewLabel("Or with your phone: scan this Sweetspot QR, accept the self-signed HTTPS certificate, then scan FC2's QR with the mobile page.")
+			phone.Wrapping = fyne.TextWrapWord
+			content.Add(phone)
 			content.Add(image)
 			certificateHint := widget.NewLabel("This pairing session uses a self-signed HTTPS certificate. SHA-256 fingerprint:\n" + bridge.CertificateFingerprint)
 			certificateHint.Wrapping = fyne.TextWrapBreak
@@ -252,8 +278,10 @@ func (s *settingsWindow) pairControl2() {
 			content.Add(choices)
 			content.Add(link)
 		})
-		e = focusrite2.Pair(ctx, cfg, bridge.QR, update)
-		bridge.Finish(e)
+		e = focusrite2.Pair(ctx, cfg, qr, update)
+		if bridge != nil {
+			bridge.Finish(e)
+		}
 		if e != nil {
 			update(fmt.Sprintf("Pairing failed: %v", e))
 			return
@@ -288,6 +316,30 @@ const (
 	// had time to show the success (the bridge stops after ten seconds).
 	pairedSessionEnd = 12 * time.Second
 )
+
+// qrInbox takes a pairing code from a screenshot when the phone pairing page
+// could not start. Like the page, it accepts one valid code per session.
+type qrInbox struct {
+	mu   sync.Mutex
+	ch   chan string
+	used bool
+}
+
+func newQRInbox() *qrInbox { return &qrInbox{ch: make(chan string, 1)} }
+
+func (q *qrInbox) Submit(value string) error {
+	if _, e := focusrite2.DecodePayload(value); e != nil {
+		return e
+	}
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	if q.used {
+		return focusrite2.ErrAlreadySubmitted
+	}
+	q.used = true
+	q.ch <- value
+	return nil
+}
 
 // maxScreenshotBytes bounds a loaded QR screenshot, like the mobile upload.
 const maxScreenshotBytes = 25 << 20

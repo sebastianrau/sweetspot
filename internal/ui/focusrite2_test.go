@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"errors"
 	"image/png"
 	"os"
 	"path/filepath"
@@ -11,6 +12,7 @@ import (
 	"github.com/skip2/go-qrcode"
 
 	"github.com/sebastianrau/sweetspot/internal/domain"
+	"github.com/sebastianrau/sweetspot/internal/focusrite2"
 )
 
 type submitter struct{ got []string }
@@ -67,5 +69,24 @@ func TestPairingIsModal(t *testing.T) {
 	s.pairDialog.Hide()
 	if s.pairDialog != nil || s.win.Canvas().Overlays().Top() != nil {
 		t.Error("closing the dialog must end the pairing")
+	}
+}
+
+// Without the phone page, a screenshot code still reaches the pairing,
+// once.
+func TestQRInbox(t *testing.T) {
+	q := newQRInbox()
+	if q.Submit("not hex") == nil {
+		t.Fatal("an invalid code must be rejected")
+	}
+	payload := strings.Repeat("a1b2c3d4", 16)
+	if e := q.Submit(payload); e != nil {
+		t.Fatal(e)
+	}
+	if got := <-q.ch; got != payload {
+		t.Fatal("code not handed to pairing")
+	}
+	if e := q.Submit(payload); !errors.Is(e, focusrite2.ErrAlreadySubmitted) {
+		t.Fatalf("second submit: %v", e)
 	}
 }
