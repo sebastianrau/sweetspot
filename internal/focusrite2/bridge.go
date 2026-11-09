@@ -198,19 +198,14 @@ func (b *Bridge) handle(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, e.Error(), code)
 			return
 		}
-		if _, e = DecodePayload(value); e != nil {
-			http.Error(w, e.Error(), http.StatusBadRequest)
+		if e = b.Submit(value); e != nil {
+			code := http.StatusBadRequest
+			if errors.Is(e, ErrAlreadySubmitted) {
+				code = http.StatusConflict
+			}
+			http.Error(w, e.Error(), code)
 			return
 		}
-		b.mu.Lock()
-		defer b.mu.Unlock()
-		if b.submitted || b.complete {
-			http.Error(w, "This pairing code was already submitted or the session ended.", http.StatusConflict)
-			return
-		}
-		b.submitted = true
-		b.message = "Checking the QR code with Focusrite Control 2…"
-		b.input <- value
 		if strings.HasSuffix(r.URL.Path, "/upload") || strings.HasSuffix(r.URL.Path, "/code") {
 			http.Redirect(w, r, "result", http.StatusSeeOther)
 			return
@@ -244,6 +239,33 @@ func readQR(r *http.Request) (string, error) {
 		return "", errors.New("select a photo containing the FC2 QR code")
 	}
 	defer f.Close()
+	return DecodeQRImage(f)
+}
+
+// ErrAlreadySubmitted means a pairing code was already submitted in this
+// session, or the session ended.
+var ErrAlreadySubmitted = errors.New("this pairing code was already submitted or the session ended")
+
+// Submit hands a decoded FC2 pairing code to the pairing session, once. The
+// mobile page and a screenshot loaded on the computer both end here.
+func (b *Bridge) Submit(value string) error {
+	if _, e := DecodePayload(value); e != nil {
+		return e
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.submitted || b.complete {
+		return ErrAlreadySubmitted
+	}
+	b.submitted = true
+	b.message = "Checking the QR code with Focusrite Control 2…"
+	b.input <- value
+	return nil
+}
+
+// DecodeQRImage reads the FC2 pairing code from a JPEG or PNG photo or
+// screenshot.
+func DecodeQRImage(f io.ReadSeeker) (string, error) {
 	config, _, e := image.DecodeConfig(f)
 	if e != nil {
 		return "", errors.New("use a JPEG or PNG image")

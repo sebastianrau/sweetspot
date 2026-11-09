@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"context"
 	"fmt"
 	"strconv"
 	"strings"
@@ -34,10 +33,9 @@ type settingsWindow struct {
 	draft      config.Config
 	monitor    domain.State
 	focusrite  *fyne.Container
-	oscPort    string // port entry text, checked on save
-	pairCancel context.CancelFunc
-	pairWindow fyne.Window
-	built      bool // the window content exists
+	oscPort    string        // port entry text, checked on save
+	pairDialog dialog.Dialog // the running FC2 pairing
+	built      bool          // the window content exists
 }
 
 func newSettingsWindow(app fyne.App, opts Options) *settingsWindow {
