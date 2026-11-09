@@ -104,6 +104,11 @@ outputs fed by mixes; an output that is also under FC2's hardware volume
 control is dimmed by both. Values below a device's supported gain range use
 output mute.
 
+FC2 meters a mix after its gain, while Focusrite Control 1 reports output
+levels before the volume. Sweetspot adds the gain actually set on the mix back
+to the FC2 meter, so **PRE** shows the level before the fader as with FC1 and
+**POST** shows FC2's meter value. Silence stays silence.
+
 Unassigned elements are never written. Unmapped speakers, meters and master
 controls are disabled in the desktop UI. Sweetspot checks saved object paths,
 numbers, classes, device serials (when advertised), duplicate output assignments,

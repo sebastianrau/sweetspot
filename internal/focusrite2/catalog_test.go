@@ -399,3 +399,33 @@ func TestMasterMappingMustBeMainOutputs(t *testing.T) {
 		t.Errorf("a mix mute as Dim must be rejected, got %v", e)
 	}
 }
+
+// FC2 meters a mix after its gain. Sweetspot reports the level before the
+// fader, so PRE stays put when the volume moves and POST gives FC2's value.
+func TestFC2MeterPreAndPost(t *testing.T) {
+	out := OutputBinding{Gain: ControlRef{Number: 4435}, MeterLeft: ControlRef{Number: 4433}, MeterRight: ControlRef{Number: 4434}}
+	actual := map[uint32]value{4435: {number: -48}, 4433: {number: -60}, 4434: {number: -127}}
+	got := preFaderLevels(out, actual)
+	if got.LeftDB != -12 || got.RightDB != domain.SilenceDB {
+		t.Fatalf("pre levels = %+v, want -12 and silence", got)
+	}
+
+	snap := domain.Snapshot{State: domain.DefaultState(), Levels: got}
+	snap.State.Master.Mute, snap.State.Master.VolumeDB = false, -48
+	snap.State.Speakers[domain.SpeakerA].Selected = true
+	if l := snap.MeterLevels(); l.LeftDB != -12 {
+		t.Errorf("PRE shows %v, want -12", l.LeftDB)
+	}
+	snap.State.Master.MeterPost = true
+	if l := snap.MeterLevels(); l.LeftDB != -60 || l.RightDB != domain.SilenceDB {
+		t.Errorf("POST shows %+v, want FC2's -60 and silence", l)
+	}
+
+	// A separately assigned right gain recalculates the right meter.
+	out.GainRight = ControlRef{Number: 4440}
+	actual[4440] = value{number: -20}
+	actual[4434] = value{number: -30}
+	if got = preFaderLevels(out, actual); got.RightDB != -10 {
+		t.Errorf("right pre level = %v, want -10", got.RightDB)
+	}
+}
