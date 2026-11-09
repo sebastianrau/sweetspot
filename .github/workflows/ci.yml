@@ -5,6 +5,15 @@ on:
     branches: [master]
   pull_request:
 
+# A new push to the same branch or pull request cancels the run still in
+# progress, so outdated runs do not hold the runners.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  LINUX_PACKAGES: libgl1-mesa-dev xorg-dev libwayland-dev libxkbcommon-dev wayland-protocols libasound2-dev
+
 jobs:
   test:
     name: test (${{ matrix.os }})
@@ -20,9 +29,14 @@ jobs:
           go-version-file: go.mod
       - name: Install Linux build dependencies
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libgl1-mesa-dev xorg-dev libwayland-dev libxkbcommon-dev wayland-protocols libasound2-dev
+        uses: awalsh128/cache-apt-pkgs-action@v1.6.3
+        with:
+          packages: ${{ env.LINUX_PACKAGES }}
+          version: 1
       - run: go build ./...
-      - run: go test -race -count=1 ./...
+      # The race detector runs on Linux only; on macOS and Windows it mostly
+      # rebuilds the cgo-heavy Fyne packages a second time.
+      - run: go test ${{ runner.os == 'Linux' && '-race' || '' }} -count=1 ./...
 
   lint:
     runs-on: ubuntu-latest
@@ -31,7 +45,11 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
-      - run: sudo apt-get update && sudo apt-get install -y libgl1-mesa-dev xorg-dev libwayland-dev libxkbcommon-dev wayland-protocols libasound2-dev
+      - name: Install Linux build dependencies
+        uses: awalsh128/cache-apt-pkgs-action@v1.6.3
+        with:
+          packages: ${{ env.LINUX_PACKAGES }}
+          version: 1
       - uses: golangci/golangci-lint-action@v9
         with:
           version: v2.15.0

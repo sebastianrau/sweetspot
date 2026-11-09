@@ -243,7 +243,8 @@ make screenshots  # regenerate the images in docs/images
 make help         # all targets
 ```
 
-CI builds and tests on macOS, Windows and Linux. Pushing a tag (for example
+CI builds and tests on macOS, Windows and Linux (with the race detector on
+Linux). Pushing a tag (for example
 `0.4.0`) builds the archives for all systems and publishes a GitHub release.
 
 ### Architecture
