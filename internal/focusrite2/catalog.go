@@ -231,6 +231,36 @@ func (info DeviceInfo) resolve(ref ControlRef, kinds ...string) (Control, error)
 	return Control{}, fmt.Errorf("FC2 mapping %q (#%d) changed or is unavailable; select it again in Configuration", ref.Path, ref.Number)
 }
 
+// Rebind follows mapped controls whose object number changed. FC2 numbers
+// its objects anew when the interface reconnects (USB, standby), while the
+// paths stay; a path is unique in the catalog. ValidateMappings still checks
+// the kinds of the controls found.
+func (info DeviceInfo) Rebind(cfg Config) Config {
+	pathOf := make(map[uint32]string, len(info.Controls))
+	byPath := make(map[string][]uint32, len(info.Controls))
+	for _, c := range info.Controls {
+		pathOf[c.Number] = c.Path
+		byPath[c.Path] = append(byPath[c.Path], c.Number)
+	}
+	follow := func(ref *ControlRef) {
+		if path, ok := pathOf[ref.Number]; ref.Number == 0 || (ok && path == ref.Path) {
+			return
+		}
+		if numbers := byPath[ref.Path]; len(numbers) == 1 {
+			ref.Number = numbers[0]
+		}
+	}
+	follow(&cfg.MasterMute)
+	follow(&cfg.MasterDim)
+	for i := range cfg.Outputs {
+		o := &cfg.Outputs[i]
+		for _, ref := range []*ControlRef{&o.Gain, &o.Mute, &o.GainRight, &o.MuteRight, &o.MeterLeft, &o.MeterRight} {
+			follow(ref)
+		}
+	}
+	return cfg
+}
+
 // MasterControl reports whether c can be the monitor Mute or Dim: an on/off
 // control of the MainOutputs block.
 func MasterControl(c Control) bool {

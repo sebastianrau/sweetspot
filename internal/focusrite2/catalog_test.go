@@ -429,3 +429,52 @@ func TestFC2MeterPreAndPost(t *testing.T) {
 		t.Errorf("right pre level = %v, want -10", got.RightDB)
 	}
 }
+
+// After standby the interface reconnects over USB and FC2 numbers all its
+// objects anew. The mappings follow their unchanged paths.
+func TestRebindFollowsRenumberedControls(t *testing.T) {
+	saved := Config{
+		MasterMute: ControlRef{Number: 4116, Path: "MainOutputs / Mute"},
+		MasterDim:  ControlRef{Number: 4117, Path: "MainOutputs / Dim"},
+	}
+	saved.Outputs[0] = OutputBinding{
+		Gain:      ControlRef{Number: 4451, Path: "Mixes / 2 / Gain"},
+		Mute:      ControlRef{Number: 4452, Path: "Mixes / 2 / Mute"},
+		MeterLeft: ControlRef{Number: 4449, Path: "Mixes / 2 / LeftMeter"},
+	}
+	info := DeviceInfo{Controls: []Control{
+		{Number: 6082, Path: "MainOutputs / Mute", Kind: "mute"},
+		{Number: 6083, Path: "MainOutputs / Dim", Kind: "bool"},
+		{Number: 6417, Path: "Mixes / 2 / Gain", Kind: "gain"},
+		{Number: 6418, Path: "Mixes / 2 / Mute", Kind: "mute"},
+		{Number: 6415, Path: "Mixes / 2 / LeftMeter", Kind: "level"},
+		// The old number of Mixes / 2 / Gain now belongs to another control.
+		{Number: 4451, Path: "Inputs / 7 / Gain", Kind: "gain"},
+	}}
+	if e := info.ValidateMappings(saved); e == nil {
+		t.Fatal("the saved numbers must not validate as they are")
+	}
+	got := info.Rebind(saved)
+	if e := info.ValidateMappings(got); e != nil {
+		t.Fatalf("rebound mappings rejected: %v", e)
+	}
+	want := map[string]uint32{"mute": 6082, "dim": 6083, "gain": 6417, "outmute": 6418, "meter": 6415}
+	have := map[string]uint32{"mute": got.MasterMute.Number, "dim": got.MasterDim.Number, "gain": got.Outputs[0].Gain.Number, "outmute": got.Outputs[0].Mute.Number, "meter": got.Outputs[0].MeterLeft.Number}
+	for k, n := range want {
+		if have[k] != n {
+			t.Errorf("%s = #%d, want #%d", k, have[k], n)
+		}
+	}
+	if got.Outputs[0].Gain.Path != "Mixes / 2 / Gain" || got.Outputs[1] != (OutputBinding{}) {
+		t.Errorf("paths or unmapped outputs changed: %+v", got.Outputs[:2])
+	}
+	if again := info.Rebind(got); again != got {
+		t.Error("a current mapping must stay as it is")
+	}
+
+	// A path that is gone stays unavailable; it is not guessed.
+	gone := Config{MasterDim: ControlRef{Number: 4117, Path: "MainOutputs / Dim"}}
+	if got := (DeviceInfo{}).Rebind(gone); got != gone {
+		t.Errorf("missing path rebound to %+v", got.MasterDim)
+	}
+}

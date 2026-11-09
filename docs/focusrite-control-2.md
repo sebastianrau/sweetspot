@@ -112,7 +112,10 @@ to the FC2 meter, so **PRE** shows the level before the fader as with FC1 and
 Unassigned elements are never written. Unmapped speakers, meters and master
 controls are disabled in the desktop UI. Sweetspot checks saved object paths,
 numbers, classes, device serials (when advertised), duplicate output assignments,
-and live gain limits before writing. Changed mappings need to be selected again.
+and live gain limits before writing. FC2 numbers its objects anew when the
+interface reconnects (USB, standby); mappings then follow their unchanged
+paths and the new numbers are saved. A mapping whose path is gone, or whose
+control changed its type, needs to be selected again.
 On reconnect, the selected physical output's current gain is adopted before any
 saved monitor state is pushed, using the dim state it was written with; FC2's
 Mute and Dim are applied after that. A gain that carried dim or sat at the
