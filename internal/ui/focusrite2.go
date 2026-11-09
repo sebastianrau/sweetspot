@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net/url"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -51,12 +50,13 @@ func (s *settingsWindow) control2Section() fyne.CanvasObject {
 		return box
 	}
 	cfg := &s.draft.Focusrite.Control2
-	binding := func(ref *focusrite2.ControlRef, kinds ...string) *widget.Select {
+	// Monitor Mute and Dim offer only the MainOutputs controls.
+	master := func(ref *focusrite2.ControlRef) *widget.Select {
 		options := []string{none}
 		byLabel := map[string]focusrite2.ControlRef{}
 		selected := none
 		for _, control := range info.Controls {
-			if !slices.Contains(kinds, control.Kind) {
+			if !focusrite2.MasterControl(control) {
 				continue
 			}
 			label := control.Path + " (#" + strconv.FormatUint(uint64(control.Number), 10) + ")"
@@ -76,20 +76,14 @@ func (s *settingsWindow) control2Section() fyne.CanvasObject {
 	}
 	form := container.New(layout.NewFormLayout(),
 		widget.NewLabel("Interface:"), widget.NewLabel(info.Model+" · "+info.Serial),
-		widget.NewLabel("Monitor Mute (optional):"), binding(&cfg.MasterMute, "mute", "bool"),
-		widget.NewLabel("Native Dim (optional):"), binding(&cfg.MasterDim, "mute", "bool"),
+		widget.NewLabel("Monitor Mute (optional):"), master(&cfg.MasterMute),
+		widget.NewLabel("FC2 Dim (optional):"), master(&cfg.MasterDim),
 	)
 	targets := info.SpeakerTargets()
 	for i := range cfg.Outputs {
 		out := &cfg.Outputs[i]
 		form.Add(heading(speakerLabel(domain.SpeakerID(i))))
 		form.Add(layout.NewSpacer())
-		name := widget.NewEntry()
-		name.SetText(out.Name)
-		name.SetPlaceHolder(speakerLabel(domain.SpeakerID(i)))
-		name.OnChanged = func(v string) { out.Name = strings.TrimSpace(v) }
-		form.Add(widget.NewLabel("Name:"))
-		form.Add(name)
 		options := []string{none}
 		bindings := map[string]focusrite2.OutputBinding{none: {}}
 		selected := none
@@ -113,7 +107,6 @@ func (s *settingsWindow) control2Section() fyne.CanvasObject {
 			if !ok {
 				return
 			}
-			binding.Name = out.Name
 			*out = binding
 			cfg.DeviceSerial = info.Serial
 		})
@@ -122,7 +115,7 @@ func (s *settingsWindow) control2Section() fyne.CanvasObject {
 		form.Add(selector)
 	}
 	box.Add(form)
-	note := widget.NewLabel("Each speaker needs a different output or mix. Mix control affects every output fed by that mix; configure routing in FC2. Native Dim uses the amount set in FC2.")
+	note := widget.NewLabel("Each speaker needs a different output or mix. Mix control affects every output fed by that mix; configure routing in FC2. Speakers take the name of their mix or output from FC2. Dim lowers the assigned outputs by the dim amount; FC2 Dim only follows.")
 	note.Wrapping = fyne.TextWrapWord
 	box.Add(note)
 	box.Add(widget.NewButton("Copy discovered controls", func() {

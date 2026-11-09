@@ -372,11 +372,6 @@ func (s *settingsWindow) save() {
 				}
 			}
 		}
-		for i, o := range s.draft.Focusrite.Control2.Outputs {
-			if o.Name != "" {
-				s.opts.Submit(domain.RenameSpeaker{ID: domain.SpeakerID(i), Name: o.Name})
-			}
-		}
 	}
 
 	for _, id := range domain.Speakers {

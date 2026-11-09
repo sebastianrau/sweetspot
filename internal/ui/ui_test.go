@@ -3,6 +3,7 @@ package ui
 import (
 	"image/color"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -10,9 +11,12 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/driver/desktop"
 	"fyne.io/fyne/v2/test"
+	"fyne.io/fyne/v2/widget"
 
 	"github.com/sebastianrau/sweetspot/internal/config"
 	"github.com/sebastianrau/sweetspot/internal/domain"
+	"github.com/sebastianrau/sweetspot/internal/focusrite"
+	"github.com/sebastianrau/sweetspot/internal/focusrite2"
 )
 
 func newTestApp(t *testing.T) (*App, *[]domain.Command) {
@@ -467,5 +471,43 @@ func TestFC2OnlyEnablesMappedCapabilities(t *testing.T) {
 	a.render(domain.Snapshot{State: domain.DefaultState(), Device: device})
 	if a.fader.Disabled() || !a.mute.enabled || !a.dim.enabled || !a.speakers[domain.SpeakerB].enabled || a.speakers[domain.SpeakerA].enabled {
 		t.Fatal("FC2 capability availability not reflected")
+	}
+}
+
+// The FC2 settings offer only MainOutputs controls for Monitor Mute and Dim
+// and no name fields: speakers take their names from FC2.
+func TestFC2MasterChoicesAndNoNameFields(t *testing.T) {
+	a, _ := newTestApp(t)
+	a.opts.Store.Update(func(c *config.Config) { c.Focusrite.Backend = "control2" })
+	info := &focusrite2.DeviceInfo{Model: "18i20", Serial: "X", Controls: []focusrite2.Control{
+		{Number: 4112, Parent: 100, Role: "MainOutputs", Path: "MainOutputs"},
+		{Number: 4116, Parent: 4112, Role: "Mute", Path: "MainOutputs / Mute", Kind: "mute"},
+		{Number: 4117, Parent: 4112, Role: "Dim", Path: "MainOutputs / Dim", Kind: "bool"},
+		{Number: 4127, Parent: 4118, Role: "Pad", Path: "Inputs / 1 / Pad", Kind: "bool"},
+		{Number: 4436, Parent: 4430, Role: "Mute", Path: "Mixes / 0 / Mute", Kind: "mute"},
+	}}
+	s := a.settings
+	s.devices = []focusrite.DeviceInfo{{Model: "18i20", SerialNumber: "X", Control2: info}}
+	s.live = domain.DefaultState()
+	s.show()
+	masters := 0
+	for _, o := range test.LaidOutObjects(s.win.Content()) {
+		switch w := o.(type) {
+		case *widget.Select:
+			if !slices.Contains(w.Options, "MainOutputs / Dim (#4117)") {
+				continue
+			}
+			masters++
+			if want := []string{none, "MainOutputs / Mute (#4116)", "MainOutputs / Dim (#4117)"}; !slices.Equal(w.Options, want) {
+				t.Errorf("options = %q, want %q", w.Options, want)
+			}
+		case *widget.Entry:
+			if strings.HasPrefix(w.PlaceHolder, "Speaker") || w.PlaceHolder == "Subwoofer:" {
+				t.Error("FC2 settings must not have name fields")
+			}
+		}
+	}
+	if masters != 2 {
+		t.Errorf("%d master selectors, want Mute and Dim", masters)
 	}
 }

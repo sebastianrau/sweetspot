@@ -142,7 +142,7 @@ type ControlRef struct {
 	Path   string `yaml:"path,omitempty"`
 }
 type OutputBinding struct {
-	Name       string     `yaml:"name,omitempty"`
+	Name       string     `yaml:"name,omitempty"` // unused: names come from FC2
 	Gain       ControlRef `yaml:"gain,omitempty"`
 	Mute       ControlRef `yaml:"mute,omitempty"`
 	GainRight  ControlRef `yaml:"gain_right,omitempty"`

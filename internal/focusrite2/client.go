@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"strings"
 	"time"
 
 	"github.com/sebastianrau/sweetspot/internal/domain"
@@ -13,16 +14,20 @@ import (
 
 var log = logging.New("focusrite2")
 
+// nameInterval is how often the output and mix names are read again.
+const nameInterval = 2 * time.Second
+
 type value struct {
 	number   float32
 	on       bool
 	min, max float32
+	text     string
 }
 
 func (c *oca) read(ctx context.Context, control Control) (value, error) {
 	var v value
 	level := uint16(4)
-	if control.Kind == "bool" {
+	if control.Kind == "bool" || control.Kind == "text" || control.Kind == "string" {
 		level = 5
 	}
 	b, e := c.call(ctx, control.Number, level, 1, 0, nil)
@@ -44,6 +49,10 @@ func (c *oca) read(ctx context.Context, control Control) (value, error) {
 				return v, errors.New("invalid FC2 boolean state")
 			}
 			v.on = b[0] == 1
+		}
+	case "text", "string":
+		if v.text, e = text(b); e != nil {
+			return v, e
 		}
 	case "gain", "level":
 		if len(b) != 12 {
@@ -184,34 +193,51 @@ func runSession(ctx context.Context, cfg Config, current func() domain.Snapshot,
 		}
 		return result, nil
 	}
+	// Speakers take the name of their output or mix, as with FC1.
+	type names struct{ custom, fixed Control }
+	var speakerNames [domain.NumSpeakers]names
+	for i, o := range cfg.Outputs {
+		speakerNames[i].custom, speakerNames[i].fixed = info.nameControls(o)
+	}
+	snap := current()
+	apply := func(cmd domain.Command) { submit(cmd); snap = domain.Apply(snap, cmd) }
+	rename := func() error {
+		for i, n := range speakerNames {
+			name := ""
+			for _, control := range []Control{n.custom, n.fixed} {
+				if control.Number == 0 || name != "" {
+					continue
+				}
+				request, done := context.WithTimeout(ctx, 5*time.Second)
+				v, e := c.read(request, control)
+				done()
+				if e != nil {
+					return e
+				}
+				name = strings.TrimSpace(v.text)
+			}
+			if name != "" && name != snap.State.Speakers[i].Name {
+				apply(domain.RenameSpeaker{ID: domain.SpeakerID(i), Name: name})
+			}
+		}
+		return nil
+	}
 	known, e := read()
 	if e != nil {
 		return e
 	}
-	snap := current()
-	apply := func(cmd domain.Command) { submit(cmd); snap = domain.Apply(snap, cmd) }
-	if cfg.MasterMute.Number != 0 {
-		apply(domain.SetMute{On: known[cfg.MasterMute.Number].on})
+	if e = rename(); e != nil {
+		return e
 	}
-	if cfg.MasterDim.Number != 0 {
-		apply(domain.SetDim{On: known[cfg.MasterDim.Number].on})
-	}
-	// Never raise a physical output on initial connection because of a stale
-	// saved fader value. Adopt the selected output's current gain first.
-	if source, ok := snap.State.MeterSource(); ok {
-		if ref := cfg.Outputs[source].Gain; ref.Number != 0 {
-			gain := known[ref.Number].number
-			if snap.State.Master.Dim && cfg.MasterDim.Number == 0 {
-				gain += float32(snap.State.Master.DimDB)
-			}
-			apply(domain.SetVolume{DB: int(math.Round(float64(gain)))})
-		}
+	for _, cmd := range connectCommands(snap.State, cfg, known) {
+		apply(cmd)
 	}
 	ticker := time.NewTicker(250 * time.Millisecond)
 	defer ticker.Stop()
 	// First push uses the locally adopted snapshot. Later iterations use the
 	// controller snapshot after all initial commands have been consumed.
 	lastKeepalive := time.Now()
+	lastNames := time.Now()
 	for {
 		if time.Since(lastKeepalive) >= time.Second {
 			if e = c.send(frame(4, []byte{0, 3})); e != nil {
@@ -228,6 +254,12 @@ func runSession(ctx context.Context, cfg Config, current func() domain.Snapshot,
 		case <-ticker.C:
 		}
 		snap = current()
+		if time.Since(lastNames) >= nameInterval {
+			if e = rename(); e != nil {
+				return e
+			}
+			lastNames = time.Now()
+		}
 		actual, e := read()
 		if e != nil {
 			return e
@@ -239,14 +271,10 @@ func runSession(ctx context.Context, cfg Config, current func() domain.Snapshot,
 			apply(domain.SetDim{On: actual[ref.Number].on})
 		}
 		levels := domain.Silence
-		if source, ok := snap.State.MeterSource(); ok {
+		if source, ok := mappedSource(snap.State, cfg); ok {
 			out := cfg.Outputs[source]
-			if ref := out.Gain; ref.Number != 0 && actual[ref.Number].number != known[ref.Number].number {
-				gain := actual[ref.Number].number
-				if snap.State.Master.Dim && cfg.MasterDim.Number == 0 {
-					gain += float32(snap.State.Master.DimDB)
-				}
-				apply(domain.SetVolume{DB: int(math.Round(float64(gain)))})
+			if ref := out.Gain; actual[ref.Number].number != known[ref.Number].number {
+				apply(domain.SetVolume{DB: adoptVolume(snap.State, actual[ref.Number], false)})
 			}
 			if out.MeterLeft.Number != 0 {
 				levels.LeftDB = float64(actual[out.MeterLeft.Number].number)
@@ -260,6 +288,59 @@ func runSession(ctx context.Context, cfg Config, current func() domain.Snapshot,
 		}
 		known = actual
 	}
+}
+
+// connectCommands adopts the device state on connecting. The selected
+// output's gain comes first: it was written with the saved dim state, not
+// with FC2's current Mute and Dim, which follow.
+func connectCommands(s domain.State, cfg Config, known map[uint32]value) []domain.Command {
+	var cmds []domain.Command
+	if source, ok := mappedSource(s, cfg); ok {
+		cmds = append(cmds, domain.SetVolume{DB: adoptVolume(s, known[cfg.Outputs[source].Gain.Number], true)})
+	}
+	if cfg.MasterMute.Number != 0 {
+		cmds = append(cmds, domain.SetMute{On: known[cfg.MasterMute.Number].on})
+	}
+	if cfg.MasterDim.Number != 0 {
+		cmds = append(cmds, domain.SetDim{On: known[cfg.MasterDim.Number].on})
+	}
+	return cmds
+}
+
+// mappedSource is the speaker whose output the volume and the meters follow:
+// the first selected, enabled main speaker with an assigned output, else a
+// selected, enabled and assigned sub.
+func mappedSource(s domain.State, cfg Config) (domain.SpeakerID, bool) {
+	sub := false
+	for _, id := range domain.Speakers {
+		spk := s.Speakers[id]
+		if !spk.Selected || spk.Disabled || cfg.Outputs[id].Gain.Number == 0 {
+			continue
+		}
+		if !id.IsSub() {
+			return id, true
+		}
+		sub = true
+	}
+	return domain.Sub, sub
+}
+
+// adoptVolume turns an output's gain into the monitor volume. Sweetspot
+// writes the gain with the dim amount subtracted and clamped to the device's
+// range, so neither is the volume itself. On connecting, the result never
+// exceeds the saved volume when the gain carried dim or sat at the lower
+// limit: un-dimming or un-muting must not get louder than before.
+func adoptVolume(s domain.State, gain value, connecting bool) int {
+	v := gain.number
+	if s.Master.Dim {
+		v += float32(s.Master.DimDB)
+	}
+	db := int(math.Round(float64(v)))
+	atFloor := gain.number <= gain.min || gain.number <= domain.MinVolumeDB
+	if atFloor || (connecting && s.Master.Dim) {
+		db = min(db, s.Master.VolumeDB)
+	}
+	return db
 }
 
 func push(ctx context.Context, c *oca, cfg Config, controls map[uint32]Control, known map[uint32]value, s domain.State) error {
@@ -281,11 +362,10 @@ func push(ctx context.Context, c *oca, cfg Config, controls map[uint32]Control, 
 		}
 	}
 	boolean(cfg.MasterMute, s.Master.Mute)
+	// As with FC1, Sweetspot dims the outputs itself; FC2's MainOutputs Dim
+	// only follows, since it does not reach outputs fed by mixes.
 	boolean(cfg.MasterDim, s.Master.Dim)
 	db := s.OutputGainDB()
-	if cfg.MasterDim.Number != 0 {
-		db = s.Master.VolumeDB
-	}
 	for i, out := range cfg.Outputs {
 		if s.Speakers[i].Disabled {
 			continue
