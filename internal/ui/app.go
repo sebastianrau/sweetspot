@@ -45,19 +45,21 @@ type App struct {
 	window   fyne.Window
 	settings *settingsWindow
 
-	volume   *canvas.Text
-	volBox   *fyne.Container // re-laid out when the number's width changes
-	prePost  *blockButton
-	fader    *Fader
-	meter    *Meter
-	scale    *meterScaleWidget
-	speakers [domain.NumSpeakers]*blockButton
-	mute     *blockButton // tags in the channel strip
-	dim      *blockButton
-	scenes   [domain.NumScenes]*sceneButton
-	dot      *canvas.Rectangle
-	status   *canvas.Text
-	statBox  *fyne.Container
+	volume         *canvas.Text
+	volBox         *fyne.Container // re-laid out when the number's width changes
+	prePost        *blockButton
+	fader          *Fader
+	meter          *Meter
+	scale          *meterScaleWidget
+	meterLevels    domain.Levels // last reading supplied to the decaying meter
+	meterLevelsSet bool
+	speakers       [domain.NumSpeakers]*blockButton
+	mute           *blockButton // tags in the channel strip
+	dim            *blockButton
+	scenes         [domain.NumScenes]*sceneButton
+	dot            *canvas.Rectangle
+	status         *canvas.Text
+	statBox        *fyne.Container
 
 	tray      *fyne.Menu
 	trayMute  *fyne.MenuItem
@@ -272,7 +274,12 @@ func (a *App) render(s domain.Snapshot) {
 	a.scale.SetFloor(floor)
 	a.meter.SetFloor(floor)
 	ml := s.MeterLevels()
-	a.meter.SetLevels(ml.LeftDB, ml.RightDB)
+	// State-only snapshots carry the previous reading. Replaying it would
+	// raise a decaying meter whenever a speaker or the fader changes.
+	if !a.meterLevelsSet || ml != a.meterLevels {
+		a.meter.SetLevels(ml.LeftDB, ml.RightDB)
+		a.meterLevels, a.meterLevelsSet = ml, true
+	}
 	a.prePost.setText(map[bool]string{false: "PRE", true: "POST"}[st.Master.MeterPost])
 	a.meter.SetDisabled(!active || (s.Device.Control2 && !s.Device.HasMeter))
 

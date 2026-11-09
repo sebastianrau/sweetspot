@@ -249,6 +249,7 @@ func runSession(ctx context.Context, cfg Config, current func() domain.Snapshot,
 	// controller snapshot after all initial commands have been consumed.
 	lastKeepalive := time.Now()
 	lastNames := time.Now()
+	meterState := meterContextFor(snap.State, cfg, known)
 	for {
 		if time.Since(lastKeepalive) >= time.Second {
 			if e = c.send(frame(4, []byte{0, 3})); e != nil {
@@ -281,18 +282,50 @@ func runSession(ctx context.Context, cfg Config, current func() domain.Snapshot,
 		if ref := cfg.MasterDim; ref.Number != 0 && actual[ref.Number].on != known[ref.Number].on {
 			apply(domain.SetDim{On: actual[ref.Number].on})
 		}
-		levels := domain.Silence
 		if source, ok := mappedSource(snap.State, cfg); ok {
 			out := cfg.Outputs[source]
 			if ref := out.Gain; actual[ref.Number].number != known[ref.Number].number {
 				apply(domain.SetVolume{DB: adoptVolume(snap.State, actual[ref.Number], false)})
 			}
-			levels = preFaderLevels(out, actual)
 		}
-		if snap.Levels != levels {
+		// FC2's meter and gain are separate reads. The first meter after a
+		// gain, mute or source change can still describe the previous output
+		// state; undoing the new gain on that reading creates a false peak.
+		levels, stableMeter := meterState.read(snap.State, cfg, actual)
+		if (stableMeter || levels == domain.Silence) && snap.Levels != levels {
 			apply(domain.SetLevels{Levels: levels})
 		}
 		known = actual
+	}
+}
+
+// meterContext records the controls that must settle before a post-gain
+// reading can be converted back to a pre-fader level.
+type meterContext struct {
+	source                           domain.SpeakerID
+	present                          bool
+	gain, gainRight                  float32
+	mute, muteRight, masterMute, dim bool
+}
+
+func (m *meterContext) read(s domain.State, cfg Config, actual map[uint32]value) (domain.Levels, bool) {
+	next := meterContextFor(s, cfg, actual)
+	stable := next == *m
+	*m = next
+	if !next.present {
+		return domain.Silence, true
+	}
+	return preFaderLevels(cfg.Outputs[next.source], actual), stable
+}
+
+func meterContextFor(s domain.State, cfg Config, actual map[uint32]value) meterContext {
+	id, ok := mappedSource(s, cfg)
+	o := cfg.Outputs[id]
+	return meterContext{
+		source: id, present: ok,
+		gain: actual[o.Gain.Number].number, gainRight: actual[o.GainRight.Number].number,
+		mute: actual[o.Mute.Number].on, muteRight: actual[o.MuteRight.Number].on,
+		masterMute: actual[cfg.MasterMute.Number].on, dim: actual[cfg.MasterDim.Number].on,
 	}
 }
 
@@ -323,8 +356,15 @@ func preFaderLevels(out OutputBinding, actual map[uint32]value) domain.Levels {
 		if meter.Number == 0 {
 			return domain.SilenceDB
 		}
-		db := float64(actual[meter.Number].number)
-		if db <= domain.SilenceDB+0.5 {
+		v := actual[meter.Number]
+		db := float64(v.number)
+		floor := domain.SilenceDB
+		// FC2 meters can bottom out well above -127 dB (e.g. -63).
+		// That sentinel is silence, so never undo output gain on it.
+		if v.min < 0 {
+			floor = max(floor, float64(v.min))
+		}
+		if db <= floor+0.5 {
 			return domain.SilenceDB
 		}
 		if gain.Number != 0 {
