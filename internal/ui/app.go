@@ -3,6 +3,7 @@ package ui
 import (
 	"image/color"
 	"strconv"
+	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
@@ -51,7 +52,8 @@ type App struct {
 	fader          *Fader
 	meter          *Meter
 	scale          *meterScaleWidget
-	meterLevels    domain.Levels // last reading supplied to the decaying meter
+	meterLevels    domain.Levels // last interface reading supplied to the decaying meter
+	meterPost      bool          // PRE/POST of that reading
 	meterLevelsSet bool
 	speakers       [domain.NumSpeakers]*blockButton
 	mute           *blockButton // tags in the channel strip
@@ -60,6 +62,10 @@ type App struct {
 	dot            *canvas.Rectangle
 	status         *canvas.Text
 	statBox        *fyne.Container
+
+	hidden     bool      // closed to the menu bar
+	foreground bool      // a Sweetspot window has the focus
+	focusLost  time.Time // when the focus last left Sweetspot
 
 	tray      *fyne.Menu
 	trayMute  *fyne.MenuItem
@@ -87,12 +93,11 @@ func newApp(fa fyne.App, opts Options) *App {
 
 	a.buildMain()
 	a.buildTray()
-	a.window.SetCloseIntercept(func() {
-		a.window.Hide()
-		a.meter.Pause()
-		if a.tray != nil {
-			a.tray.Refresh()
-		}
+	a.window.SetCloseIntercept(a.hide)
+	// Foreground means one of Sweetspot's windows has the focus.
+	a.fyne.Lifecycle().SetOnEnteredForeground(func() { a.foreground = true })
+	a.fyne.Lifecycle().SetOnExitedForeground(func() {
+		a.foreground, a.focusLost = false, time.Now()
 	})
 	a.render(domain.Snapshot{State: opts.Store.Get().State(), Levels: domain.Silence})
 	return a
@@ -207,17 +212,47 @@ func (a *App) buildTray() {
 		exit,
 	)
 	desk.SetSystemTrayMenu(a.tray)
-	// A click on the icon opens the window; a right-click opens the menu.
+	// A click on the icon toggles the window; a right-click opens the menu.
 	// Fyne's SetSystemTrayWindow would only show the window and replace the
 	// close handling that pauses the meter, so the handler is set here.
-	systray.SetOnTapped(func() { fyne.Do(a.show) })
+	systray.SetOnTapped(func() { fyne.Do(a.toggle) })
 	a.setTrayIcon(trayNormal)
 }
 
 func (a *App) show() {
+	a.hidden = false
 	a.window.Show()
 	a.window.RequestFocus()
 	a.meter.Resume()
+}
+
+// hide closes the window to the menu bar; the app keeps running and the
+// meter stops drawing.
+func (a *App) hide() {
+	a.hidden = true
+	a.window.Hide()
+	a.meter.Pause()
+	if a.tray != nil {
+		a.tray.Refresh()
+	}
+}
+
+// trayFocusGrace is how long after losing the focus the window still
+// counts as in front for a click on the menu bar icon.
+const trayFocusGrace = 500 * time.Millisecond
+
+// toggle is the click on the menu bar icon: it hides the window when it is
+// in front and brings it to the front when it is hidden or covered by
+// another app.
+func (a *App) toggle() {
+	// On macOS the click on the icon itself takes the focus away just before
+	// it arrives here, so a window that was in front a moment ago counts.
+	inFront := a.foreground || time.Since(a.focusLost) < trayFocusGrace
+	if !a.hidden && inFront {
+		a.hide()
+		return
+	}
+	a.show()
 }
 
 func (a *App) setTrayIcon(icon fyne.Resource) {
@@ -273,12 +308,15 @@ func (a *App) render(s domain.Snapshot) {
 	floor := float64(domain.ValidMeterFloor(st.Master.MeterFloorDB))
 	a.scale.SetFloor(floor)
 	a.meter.SetFloor(floor)
-	ml := s.MeterLevels()
 	// State-only snapshots carry the previous reading. Replaying it would
-	// raise a decaying meter whenever a speaker or the fader changes.
-	if !a.meterLevelsSet || ml != a.meterLevels {
+	// raise a decaying meter whenever a speaker, the fader or Dim changes;
+	// in POST the old reading would even come back at the new gain. So only
+	// a new reading from the interface, or a PRE/POST switch, reaches the
+	// meter.
+	if !a.meterLevelsSet || s.Levels != a.meterLevels || st.Master.MeterPost != a.meterPost {
+		ml := s.MeterLevels()
 		a.meter.SetLevels(ml.LeftDB, ml.RightDB)
-		a.meterLevels, a.meterLevelsSet = ml, true
+		a.meterLevels, a.meterPost, a.meterLevelsSet = s.Levels, st.Master.MeterPost, true
 	}
 	a.prePost.setText(map[bool]string{false: "PRE", true: "POST"}[st.Master.MeterPost])
 	a.meter.SetDisabled(!active || (s.Device.Control2 && !s.Device.HasMeter))

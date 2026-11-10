@@ -328,6 +328,72 @@ func TestMeterDoesNotReplayLevelsOnControlChanges(t *testing.T) {
 	}
 }
 
+// In POST the shown level is the reading plus the volume. Raising the fader
+// or switching Dim off must not replay the old reading at the new gain.
+func TestPostMeterDoesNotReplayLevelsOnGainChanges(t *testing.T) {
+	a, _ := newTestApp(t)
+	s := domain.Snapshot{State: domain.DefaultState(), Device: connected(),
+		Levels: domain.Levels{LeftDB: -6, RightDB: -12}}
+	s = domain.Apply(s, domain.SelectSpeaker{ID: domain.SpeakerA, On: true})
+	s = domain.Apply(s, domain.SetMute{On: false})
+	s = domain.Apply(s, domain.SetVolume{DB: -30})
+	s = domain.Apply(s, domain.SetMeterPost{On: true})
+	s = domain.Apply(s, domain.SetDim{On: true})
+	a.render(s)
+
+	for _, cmd := range []domain.Command{
+		domain.SetVolume{DB: -10},
+		domain.SetDim{On: false},
+	} {
+		a.meter.left, a.meter.right = -55, -55 // decay since the last reading
+		s = domain.Apply(s, cmd)
+		a.render(s)
+		if a.meter.left != -55 || a.meter.right != -55 {
+			t.Fatalf("%+v replayed the old reading: %v, %v", cmd, a.meter.left, a.meter.right)
+		}
+	}
+
+	// A new reading shows at the current gain: -8 at -10 dB volume.
+	s.Levels = domain.Levels{LeftDB: -8, RightDB: -14}
+	a.render(s)
+	if a.meter.left != -18 || a.meter.right != -24 {
+		t.Errorf("fresh POST reading = %v, %v, want -18, -24", a.meter.left, a.meter.right)
+	}
+}
+
+// The menu bar icon hides a window in front, and brings a hidden or
+// covered one to the front.
+func TestTrayClickTogglesWindow(t *testing.T) {
+	a, _ := newTestApp(t)
+	a.foreground = true
+	a.toggle()
+	if !a.hidden || !a.meter.paused {
+		t.Fatal("a click on a window in front must hide it and pause the meter")
+	}
+	a.foreground = false
+	a.toggle()
+	if a.hidden || a.meter.paused {
+		t.Fatal("a click must show a hidden window")
+	}
+	a.foreground = false // covered by another app
+	a.toggle()
+	if a.hidden {
+		t.Fatal("a click on a covered window must bring it to the front, not hide it")
+	}
+	// macOS: the click on the icon takes the focus just before it arrives.
+	a.foreground, a.focusLost = false, time.Now().Add(-50*time.Millisecond)
+	a.toggle()
+	if !a.hidden {
+		t.Fatal("a window that lost the focus to the click itself must hide")
+	}
+	a.toggle()
+	a.foreground, a.focusLost = false, time.Now().Add(-5*time.Second)
+	a.toggle()
+	if a.hidden {
+		t.Fatal("a window covered for a while must come to the front")
+	}
+}
+
 func TestPrePostSwitch(t *testing.T) {
 	a, cmds := newTestApp(t)
 	s := domain.Snapshot{State: domain.DefaultState(), Device: connected()}
