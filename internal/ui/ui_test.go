@@ -361,6 +361,39 @@ func TestPostMeterDoesNotReplayLevelsOnGainChanges(t *testing.T) {
 	}
 }
 
+// The menu bar icon hides a window in front, and brings a hidden or
+// covered one to the front.
+func TestTrayClickTogglesWindow(t *testing.T) {
+	a, _ := newTestApp(t)
+	a.foreground = true
+	a.toggle()
+	if !a.hidden || !a.meter.paused {
+		t.Fatal("a click on a window in front must hide it and pause the meter")
+	}
+	a.foreground = false
+	a.toggle()
+	if a.hidden || a.meter.paused {
+		t.Fatal("a click must show a hidden window")
+	}
+	a.foreground = false // covered by another app
+	a.toggle()
+	if a.hidden {
+		t.Fatal("a click on a covered window must bring it to the front, not hide it")
+	}
+	// macOS: the click on the icon takes the focus just before it arrives.
+	a.foreground, a.focusLost = false, time.Now().Add(-50*time.Millisecond)
+	a.toggle()
+	if !a.hidden {
+		t.Fatal("a window that lost the focus to the click itself must hide")
+	}
+	a.toggle()
+	a.foreground, a.focusLost = false, time.Now().Add(-5*time.Second)
+	a.toggle()
+	if a.hidden {
+		t.Fatal("a window covered for a while must come to the front")
+	}
+}
+
 func TestPrePostSwitch(t *testing.T) {
 	a, cmds := newTestApp(t)
 	s := domain.Snapshot{State: domain.DefaultState(), Device: connected()}
