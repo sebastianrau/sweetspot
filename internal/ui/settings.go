@@ -2,10 +2,13 @@ package ui
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
@@ -73,6 +76,7 @@ func (s *settingsWindow) show() {
 		widget.NewAccordionItem("Midi:", s.midiSection()),
 		widget.NewAccordionItem("Focusrite:", s.focusrite),
 		widget.NewAccordionItem("OSC:", s.oscSection()),
+		widget.NewAccordionItem("About", s.aboutSection()),
 	)
 	sections.Open(0)
 
@@ -314,6 +318,41 @@ func (s *settingsWindow) outputSelect(dev *focusrite.DeviceInfo, fc focusrite.Co
 		s.draft.SetFocusrite(next)
 	}
 	return sel
+}
+
+// aboutSection shows the version, the license and where the settings live.
+// There is no About menu: on macOS the app has no Dock icon.
+func (s *settingsWindow) aboutSection() fyne.CanvasObject {
+	icon := canvas.NewImageFromResource(logo)
+	icon.FillMode = canvas.ImageFillContain
+	icon.SetMinSize(fyne.NewSize(64, 64))
+	path := widget.NewLabel("Settings file: " + homeRelative(s.opts.Store.Path()))
+	path.Wrapping = fyne.TextWrapBreak
+	return container.NewVBox(
+		container.NewHBox(icon, container.NewCenter(heading(appTitle+" "+versionText(s.opts.Version)))),
+		widget.NewLabel("Business Source License 1.1 · © Sebastian Rau"),
+		path,
+	)
+}
+
+// versionText is the build version; builds without one are "dev".
+func versionText(version string) string {
+	if version == "" {
+		return "dev"
+	}
+	return version
+}
+
+// homeRelative shortens a path in the home directory to ~/...
+func homeRelative(path string) string {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return path
+	}
+	if rel, ok := strings.CutPrefix(path, home+string(filepath.Separator)); ok {
+		return "~" + string(filepath.Separator) + rel
+	}
+	return path
 }
 
 func (s *settingsWindow) oscSection() fyne.CanvasObject {

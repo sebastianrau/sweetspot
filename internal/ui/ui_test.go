@@ -2,6 +2,7 @@ package ui
 
 import (
 	"image/color"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -9,6 +10,7 @@ import (
 	"time"
 
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/driver/desktop"
 	"fyne.io/fyne/v2/test"
 	"fyne.io/fyne/v2/widget"
@@ -601,5 +603,42 @@ func TestFC2MasterChoicesAndNoNameFields(t *testing.T) {
 	}
 	if masters != 2 {
 		t.Errorf("%d master selectors, want Mute and Dim", masters)
+	}
+}
+
+// Configuration ends with an About section: logo, name and version, the
+// license and the settings file.
+func TestAboutSection(t *testing.T) {
+	a, _ := newTestApp(t)
+	s := a.settings
+	s.opts.Version = "0.10.3"
+	var texts []string
+	logos := 0
+	for _, o := range test.LaidOutObjects(test.NewTempWindow(t, s.aboutSection()).Content()) {
+		switch w := o.(type) {
+		case *widget.Label:
+			texts = append(texts, w.Text)
+		case *canvas.Image:
+			if w.Resource == logo {
+				logos++
+			}
+		}
+	}
+	want := []string{"Sweetspot 0.10.3", "Business Source License 1.1 · © Sebastian Rau", "Settings file: " + homeRelative(s.opts.Store.Path())}
+	if !slices.Equal(texts, want) {
+		t.Errorf("about texts = %q, want %q", texts, want)
+	}
+	if logos != 1 {
+		t.Errorf("%d logos, want 1", logos)
+	}
+	if versionText("") != "dev" {
+		t.Error("a build without a version must show dev")
+	}
+	home, _ := os.UserHomeDir()
+	if got := homeRelative(filepath.Join(home, "Library", "x.yaml")); got != filepath.Join("~", "Library", "x.yaml") {
+		t.Errorf("home path = %q", got)
+	}
+	if got := homeRelative("/etc/x.yaml"); got != "/etc/x.yaml" {
+		t.Errorf("other path = %q", got)
 	}
 }
