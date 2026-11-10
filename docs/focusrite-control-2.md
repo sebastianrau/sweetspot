@@ -107,7 +107,11 @@ output mute.
 FC2 meters a mix after its gain, while Focusrite Control 1 reports output
 levels before the volume. Sweetspot adds the gain actually set on the mix back
 to the FC2 meter, so **PRE** shows the level before the fader as with FC1 and
-**POST** shows FC2's meter value. Silence stays silence.
+**POST** shows FC2's meter value. Silence stays silence. Because of that,
+PRE can only show what FC2's meter still sees after the gain: with a meter
+that bottoms out at -63 dB and a volume of -48 dB, PRE stays silent below
+about -15 dBFS. The first reading after a gain, mute or speaker change is
+skipped, as it can still describe the previous gain.
 
 Unassigned elements are never written. Unmapped speakers, meters and master
 controls are disabled in the desktop UI. Sweetspot checks saved object paths,

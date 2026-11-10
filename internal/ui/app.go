@@ -51,7 +51,8 @@ type App struct {
 	fader          *Fader
 	meter          *Meter
 	scale          *meterScaleWidget
-	meterLevels    domain.Levels // last reading supplied to the decaying meter
+	meterLevels    domain.Levels // last interface reading supplied to the decaying meter
+	meterPost      bool          // PRE/POST of that reading
 	meterLevelsSet bool
 	speakers       [domain.NumSpeakers]*blockButton
 	mute           *blockButton // tags in the channel strip
@@ -273,12 +274,15 @@ func (a *App) render(s domain.Snapshot) {
 	floor := float64(domain.ValidMeterFloor(st.Master.MeterFloorDB))
 	a.scale.SetFloor(floor)
 	a.meter.SetFloor(floor)
-	ml := s.MeterLevels()
 	// State-only snapshots carry the previous reading. Replaying it would
-	// raise a decaying meter whenever a speaker or the fader changes.
-	if !a.meterLevelsSet || ml != a.meterLevels {
+	// raise a decaying meter whenever a speaker, the fader or Dim changes;
+	// in POST the old reading would even come back at the new gain. So only
+	// a new reading from the interface, or a PRE/POST switch, reaches the
+	// meter.
+	if !a.meterLevelsSet || s.Levels != a.meterLevels || st.Master.MeterPost != a.meterPost {
+		ml := s.MeterLevels()
 		a.meter.SetLevels(ml.LeftDB, ml.RightDB)
-		a.meterLevels, a.meterLevelsSet = ml, true
+		a.meterLevels, a.meterPost, a.meterLevelsSet = s.Levels, st.Master.MeterPost, true
 	}
 	a.prePost.setText(map[bool]string{false: "PRE", true: "POST"}[st.Master.MeterPost])
 	a.meter.SetDisabled(!active || (s.Device.Control2 && !s.Device.HasMeter))

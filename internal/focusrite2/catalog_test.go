@@ -400,8 +400,6 @@ func TestMasterMappingMustBeMainOutputs(t *testing.T) {
 	}
 }
 
-// FC2 meters a mix after its gain. Sweetspot reports the level before the
-// fader, so PRE stays put when the volume moves and POST gives FC2's value.
 func TestFC2MeterRejectsTransitionalReadings(t *testing.T) {
 	s := domain.DefaultState()
 	cfg := Config{}
@@ -459,6 +457,8 @@ func TestFC2MeterSilenceUsesReportedMinimum(t *testing.T) {
 	}
 }
 
+// FC2 meters a mix after its gain. Sweetspot reports the level before the
+// fader, so PRE stays put when the volume moves and POST gives FC2's value.
 func TestFC2MeterPreAndPost(t *testing.T) {
 	out := OutputBinding{Gain: ControlRef{Number: 4435}, MeterLeft: ControlRef{Number: 4433}, MeterRight: ControlRef{Number: 4434}}
 	actual := map[uint32]value{4435: {number: -48}, 4433: {number: -60}, 4434: {number: -127}}
