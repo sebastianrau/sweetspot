@@ -163,6 +163,7 @@ once; only the connection whose settings changed reconnects.
 | **Midi** | MIDI input and output port, the fader channel, and the keys for Mute, Dim, the meter's Pre/Post switch, Scene A/B and each speaker. |
 | **Focusrite** | The interface, and which stereo output each speaker uses. The monitor Mute and Dim controls of the interface are linked automatically. |
 | **OSC** | OSC server on/off, its port, access from other devices, and targets that always receive the state. |
+| **About** | Version, license and the path of the settings file. |
 
 ## Control surfaces and Stream Deck
 
